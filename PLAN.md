@@ -1,99 +1,62 @@
-# auto-terminal
+# Preempt
 
-A local-first predictive terminal. Warp's Next Command UX, but on-device: no account, no cloud dependency, no telemetry by default.
+Preempt is a terminal prototype that suggests commands from zsh history. It is
+built on a modified Alacritty source tree. An optional local model can add more
+suggestions. The prediction code has no cloud service.
 
-## Thesis
+## Current status
 
-Every serious AI terminal in 2026 (Warp) requires an account and routes AI through hosted backends. The open lane is **local-first prediction**: same ghost-text UX, all models on-device, user history never leaves the machine.
-
-## Architecture
-
-```
-┌─ Terminal core (Rust, GPU) ──────────────────────┐
-│ PTY │ ANSI parser │ renderer │ input pipeline     │
-│            └─ prediction overlay hook (ours)      │
-├─ Prediction cascade ─────────────────────────────┤
-│ T0 <5ms    trie prefix-match on history          │
-│ T1 <30ms   frecency n-grams (cwd/git/exit-code)  │
-│ T2 <150ms  on-device NL2Shell-class model (GGUF,│
-│            llama.cpp, ~400MB, fine-tuned on user)│
-│ T3 async   cloud LLM (opt-in): NL→cmd, fixes     │
-├─ Systems ────────────────────────────────────────┤
-│ • Speculative prefetch: pre-compute top-k while │
-│   user types (ShellGames pattern)                │
-│ • Safety gate: CARE-style static verifier (~2ms) │
-│   flags destructive cmds before accept           │
-│ • Learning loop: accept/reject/modify → ranking  │
-│ • Privacy: secret redaction before anything      │
-│   leaves device; encrypted history store          │
-└──────────────────────────────────────────────────┘
-```
-
-### Decisions (2026 research)
-
-- **Base: Alacritty 0.17 fork.** Clean MIT, fast, light. We own the prediction layer natively — no AGPL entanglement (Warp fork rejected), no plugin latency ceiling (WezTerm rejected).
-- **Tier 2 model class: NL2Shell recipe** (Qwen3.5-0.8B, QLoRA, GGUF ~400MB, runs in llama.cpp). MIT-licensed precedent, edge-deployable.
-- **Cascade validated by research:** ShellGames (arXiv 2606.17986) uses the same two-stage design — command-level 3-gram + lightweight LLM refinement — plus speculative prefetch of top-k predictions.
-- **Safety gate pattern:** CARE (ISSRE 2026) — static-first command verification (~2ms, 85.6% F1), LLM judge only for ambiguous cases.
-
-## Stack
-
-| Layer | Tech |
+| Part | Status |
 |---|---|
-| Core language | Rust |
-| Terminal base | Alacritty 0.17 fork — winit, vte (ANSI parser), wgpu (GPU rendering) |
-| PTY | portable-pty |
-| T0/T1 predictors | Pure Rust: radix_trie (prefix match), in-house n-gram engine; tokio for async orchestration + prefetch |
-| Tier 2 (on-device LLM) | llama.cpp via llama-cpp-2, GGUF sub-1B model, in-process |
-| Tier 3 (cloud, opt-in) | reqwest, provider-agnostic keys (Anthropic/OpenAI/local Ollama), never a hard dependency |
-| Safety gate | Rust port of CARE pattern — static AST analysis, shell-words parsing |
-| History store | SQLite (SQLCipher-encrypted): command, cwd, git branch, exit code, timestamp |
-| Training pipeline | Python (PyTorch + TRL/Unsloth QLoRA) — fine-tunes Tier 2 on user history, exports GGUF; not part of runtime |
-| Config | TOML (Alacritty convention) + inline keybinding picker |
-| Testing | criterion (micro), vtebench (terminal perf), replay-eval harness measuring accept-rate/top-k on real history |
-| CI/Release | GitHub Actions, cargo-dist, macOS notarization, Sparkle-style auto-update |
-| Telemetry | Local SQLite metrics only; opt-in crash reporting |
+| T0 history matching | Implemented. Ranks command prefixes by frequency and recency. |
+| T1 n-gram fallback | Implemented. Runs when T0 has no match. |
+| T2 local model | Experimental. The two-candidate run returned a candidate for 119 of 128 inputs. Warm latency was 806 ms median and 1,468 ms p95; the target is 150 ms. |
+| Risk hints | Implemented as UI labels. They do not block commands. |
+| History and feedback | Stored locally in a SQLCipher database. The key is kept in the operating system's credential store. |
+| Terminal overlay | Displays ghost text and accepts or cycles suggestions. A zsh hook supplies the current input line. |
+| Cloud prediction | Not implemented. |
 
-## UX bar (Warp conventions)
+The T0/T1 replay measured 24 µs median and 72 µs p95. See the [evaluation
+report](training/REPORT.md) for the test setup and results.
 
-- Ghost text suggestion after cursor
-- `→` / `Ctrl-F` accept, cycling through ranked candidates
-- Inline keybinding picker to remap accept key
-- Risk highlighting for destructive commands (safety gate)
-- Every AI feature individually toggleable
-- Debounced, never blocks input; stale suggestion > no suggestion is a bug
+## Milestones
 
-## Workspace layout
+- **P0 — history predictor: complete (2026-09-26).** Added the Rust workspace,
+  zsh history parser, prefix index, and frequency/recency ranking.
+- **P1 — terminal integration: complete (2026-09-26).** Added the Alacritty
+  overlay, zsh input hook, n-gram fallback, suggestion cycling, and risk hints.
+- **P2 — local model and storage: in progress.** Added optional GGUF inference,
+  background generation, encrypted history and feedback storage, and a local
+  training workflow. The app does not download model weights at startup.
+  - The first MLX fine-tuning run did not improve results. On a 128-example
+    holdout, the base model and adapter both produced 0 exact completions. The
+    adapter produced 98 clean one-line outputs; the base produced 128. The app
+    does not use the adapter.
+  - In the GGUF candidate sweep, two candidates produced 2 exact completions
+    out of 128 and returned at least one candidate for 119 inputs. Warm median
+    latency was 806 ms, above the 150 ms target.
+  - In a separate cascade replay, T0/T1 produced 5 exact completions and T2
+    added 2. The combined set had 7; the first suggestion was exact on 6 inputs.
+  - Next: reduce T2 latency, make replay comparisons more repeatable, and
+    evaluate the fast-tier miss trigger before another training run.
+- **P3 — future work.** Consider opt-in cloud prediction, a natural-language
+  command bar, error recovery, packaging, signing, and automatic updates.
 
-```
-auto-terminal/
-├── Cargo.toml            # workspace
-├── crates/
-│   ├── predict/          # cascade engine: T0 trie, T1 n-grams, orchestration, prefetch
-│   ├── safety/           # command risk verification
-│   ├── store/            # encrypted history DB, feature extraction, learning signals
-│   └── core/             # Alacritty fork + prediction overlay hook (added P1)
-├── training/             # Python: QLoRA fine-tune pipeline, GGUF export
-└── PLAN.md
-```
+## Performance targets
 
-## Roadmap
+- T0/T1: p99 latency below 50 ms.
+- T2: latency below 150 ms.
+- Replay: top suggestion accepted on more than 30% of examples.
+- Default mode: no network requests.
+- Rendering: within 10% of stock Alacritty.
 
-- **P0 (wk 1):** Workspace scaffold; `predict` crate with T0 prefix index + history parser, tested end-to-end against real shell history. ✓ complete (2026-09-26)
-- **P1 (wk 2–3):** Fork Alacritty into `crates/core`; wire prediction overlay into input pipeline; ghost text UX; T1 n-grams; accept/reject telemetry; cycling UX. ← current
-- **P2 (mo 2):** T2 on-device model (llama-cpp-2, GGUF); speculative prefetch; safety gate; personalization loop (fine-tune on user history); encrypted store.
-- **P3 (mo 3):** Opt-in T3 cloud tier; NL command bar; error recovery; signed/notarized builds; auto-update; 1.0.
+The measured results are listed above. There is no project CI or release
+pipeline yet.
 
-## Success metrics
+## Privacy requirements
 
-- Suggestion latency p99 < 50ms for T0/T1
-- Accept rate on replay-eval: > 30% top-1 (Warp-style Next Command baseline)
-- Zero network calls in default mode (verifiable via sandboxed CI test)
-- Terminal rendering perf within 10% of stock Alacritty (vtebench)
-
-## Privacy principles
-
-1. All training and inference on-device by default
-2. Secret redaction (never learn/teach/store tokens, keys, passwords)
-3. Encrypted history at rest
-4. Cloud tier strictly opt-in, per-session, with visible indicator
+- Keep shell history, prompts, and model inference on the device by default.
+- Redact common secrets and encrypt stored history. Redaction can miss secrets.
+- Do not add cloud prediction without an explicit opt-in and a visible status.
+- Keep training data and adapters in local app data; do not commit or upload
+  them.

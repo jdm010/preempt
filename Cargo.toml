@@ -1,3 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/predict"]
+members = ["crates/predict", "crates/safety", "crates/store", "crates/core"]
+
+[workspace.package]
+license = "Apache-2.0"

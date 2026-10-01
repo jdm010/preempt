@@ -33,11 +33,17 @@ pub fn parse_zsh(text: &str) -> Vec<HistoryEntry> {
         match pending.take() {
             Some((ts, mut acc)) => {
                 acc.push_str(&command_line);
-                entries.push(HistoryEntry { command: acc, timestamp: ts });
+                entries.push(HistoryEntry {
+                    command: acc,
+                    timestamp: ts,
+                });
             }
             None => {
                 if !command_line.trim().is_empty() {
-                    entries.push(HistoryEntry { command: command_line, timestamp });
+                    entries.push(HistoryEntry {
+                        command: command_line,
+                        timestamp,
+                    });
                 }
             }
         }
@@ -46,7 +52,10 @@ pub fn parse_zsh(text: &str) -> Vec<HistoryEntry> {
     if let Some((ts, acc)) = pending {
         let trimmed = acc.trim();
         if !trimmed.is_empty() {
-            entries.push(HistoryEntry { command: trimmed.to_string(), timestamp: ts });
+            entries.push(HistoryEntry {
+                command: trimmed.to_string(),
+                timestamp: ts,
+            });
         }
     }
 
@@ -125,7 +134,7 @@ mod tests {
     #[test]
     fn skips_undecodable_commands_but_keeps_valid_history_entries() {
         let path = std::env::temp_dir().join(format!(
-            "at-predict-history-{}.zsh_history",
+            "preempt-predict-history-{}.zsh_history",
             std::process::id()
         ));
         std::fs::write(&path, b"echo before\necho bad \xff command\necho after\n").unwrap();

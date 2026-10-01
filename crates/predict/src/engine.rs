@@ -1,14 +1,21 @@
 use crate::history::HistoryEntry;
 use crate::index::PrefixIndex;
+use crate::ngram::NgramIndex;
 use crate::Suggestion;
+
 pub struct Engine {
     index: PrefixIndex,
+    ngrams: NgramIndex,
     now: i64,
 }
 
 impl Engine {
     pub fn build(entries: &[HistoryEntry], now: i64) -> Self {
-        Engine { index: PrefixIndex::build(entries, now), now }
+        Engine {
+            index: PrefixIndex::build(entries, now),
+            ngrams: NgramIndex::build(entries, now),
+            now,
+        }
     }
 
     pub fn from_zsh_text(text: &str, now: i64) -> Self {
@@ -17,7 +24,12 @@ impl Engine {
     }
 
     pub fn suggest(&self, input: &str, max: usize) -> Vec<Suggestion> {
-        self.index.suggest(input, max)
+        let prefix_matches = self.index.suggest(input, max);
+        if prefix_matches.is_empty() {
+            self.ngrams.suggest(input, max)
+        } else {
+            prefix_matches
+        }
     }
 
     pub fn top(&self, input: &str) -> Option<Suggestion> {

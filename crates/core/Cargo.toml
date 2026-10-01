@@ -1,0 +1,10 @@
+[package]
+name = "preempt-core"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+
+[dependencies]
+preempt-predict = { path = "../predict", features = ["llama"] }
+preempt-safety = { path = "../safety" }
+preempt-store = { path = "../store" }

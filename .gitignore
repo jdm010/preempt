@@ -1,2 +1,14 @@
 /target/
+**/target/
+.idea/
 .DS_Store
+.env
+.env.*
+!.env.example
+*.gguf
+*.safetensors
+*.sqlite
+*.sqlite3
+*.db
+/training-data/
+/training-run.*/

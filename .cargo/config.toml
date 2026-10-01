@@ -1,0 +1,5 @@
+[env]
+# The bundled llama.cpp snapshot references a macOS 15 Metal class at load
+# time. Keep local builds runnable on macOS 14; opt into Metal explicitly on
+# macOS 15 or newer with `GGML_METAL=ON`.
+GGML_METAL = { value = "OFF", force = false }

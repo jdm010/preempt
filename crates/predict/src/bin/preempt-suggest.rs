@@ -1,13 +1,13 @@
-use at_predict::engine::Engine;
+use preempt_predict::{engine::Engine, Tier};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty() {
-        eprintln!("usage: at-suggest [--file PATH] [--top N] <prefix>");
+        eprintln!("usage: preempt-suggest [--file PATH] [--top N] <prefix>");
         std::process::exit(2);
     }
 
-    let mut file = at_predict::history::default_history_path();
+    let mut file = preempt_predict::history::default_history_path();
     let mut top = 5usize;
     let mut prefix = String::new();
 
@@ -16,7 +16,11 @@ fn main() {
         match args[i].as_str() {
             "--file" => {
                 i += 1;
-                file = args.get(i).cloned().map(std::path::PathBuf::from).unwrap_or(file);
+                file = args
+                    .get(i)
+                    .cloned()
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or(file);
             }
             "--top" => {
                 i += 1;
@@ -27,10 +31,10 @@ fn main() {
         i += 1;
     }
 
-    let entries = match at_predict::history::load(&file) {
+    let entries = match preempt_predict::history::load(&file) {
         Ok(entries) => entries,
         Err(err) => {
-            eprintln!("at-suggest: cannot read {}: {err}", file.display());
+            eprintln!("preempt-suggest: cannot read {}: {err}", file.display());
             std::process::exit(1);
         }
     };
@@ -47,7 +51,16 @@ fn main() {
         empty if empty.is_empty() => println!("no suggestions for {prefix:?}"),
         suggestions => {
             for s in suggestions {
-                println!("{prefix}\x1b[2m{}\x1b[0m    (score {:.2}, {})", s.completion, s.score, "T0");
+                let tier = match s.tier {
+                    Tier::T0Prefix => "T0",
+                    Tier::T1Ngram => "T1",
+                    Tier::T2LocalLlm => "T2",
+                    Tier::T3Cloud => "T3",
+                };
+                println!(
+                    "{prefix}\x1b[2m{}\x1b[0m    (score {:.2}, {tier})",
+                    s.completion, s.score
+                );
             }
         }
     }

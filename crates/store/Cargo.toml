@@ -1,0 +1,23 @@
+[package]
+name = "preempt-store"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+
+[dependencies]
+preempt-predict = { path = "../predict" }
+getrandom = "0.4.3"
+keyring = { version = "4.2.0", default-features = false, features = ["v1"] }
+hmac = "0.12.1"
+sha2 = "0.10.9"
+serde_json = "1.0.145"
+
+[[bin]]
+name = "preempt-training-data"
+path = "src/bin/preempt-training-data.rs"
+
+[target.'cfg(unix)'.dependencies]
+rusqlite = { version = "0.40.2", features = ["bundled-sqlcipher"] }
+
+[target.'cfg(windows)'.dependencies]
+rusqlite = { version = "0.40.2", features = ["bundled-sqlcipher-vendored-openssl"] }

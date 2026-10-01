@@ -98,7 +98,10 @@ mod tests {
     const NOW: i64 = 1_700_000_000;
 
     fn entry(cmd: &str, ts: Option<i64>) -> HistoryEntry {
-        HistoryEntry { command: cmd.to_string(), timestamp: ts }
+        HistoryEntry {
+            command: cmd.to_string(),
+            timestamp: ts,
+        }
     }
 
     #[test]
