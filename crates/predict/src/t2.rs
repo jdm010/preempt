@@ -33,6 +33,7 @@ type ResultHandler = Arc<dyn Fn(T2Result) + Send + Sync + 'static>;
 
 struct Request {
     id: u64,
+    sample_seed: u32,
     input: String,
     handler: ResultHandler,
 }
@@ -85,6 +86,28 @@ impl T2Prefetcher {
 
     /// Queue candidate generation for the latest input; the callback runs on the model worker.
     pub fn request(&self, input: String, handler: ResultHandler) -> u64 {
+        self.queue_request(input, None, handler)
+    }
+
+    /// Queue candidate generation with a caller-provided sampling seed.
+    ///
+    /// This is useful for replaying the same input set under different policies:
+    /// sampling then stays attached to each example instead of request order.
+    pub fn request_with_seed(
+        &self,
+        input: String,
+        sample_seed: u32,
+        handler: ResultHandler,
+    ) -> u64 {
+        self.queue_request(input, Some(sample_seed), handler)
+    }
+
+    fn queue_request(
+        &self,
+        input: String,
+        sample_seed: Option<u32>,
+        handler: ResultHandler,
+    ) -> u64 {
         let mut state = self
             .shared
             .state
@@ -92,7 +115,12 @@ impl T2Prefetcher {
             .unwrap_or_else(|poison| poison.into_inner());
         state.request_id = state.request_id.wrapping_add(1).max(1);
         let id = state.request_id;
-        state.pending = Some(Request { id, input, handler });
+        state.pending = Some(Request {
+            id,
+            sample_seed: sample_seed.unwrap_or(id as u32),
+            input,
+            handler,
+        });
         self.shared.changed.notify_one();
         id
     }
@@ -114,8 +142,8 @@ impl T2Prefetcher {
 
 /// Resolve the model path used by the application and local evaluation tools.
 pub fn default_model_path() -> Option<PathBuf> {
-    if let Some(path) = std::env::var_os("PREEMPT_GGUF")
-        .or_else(|| std::env::var_os("AUTO_TERMINAL_GGUF"))
+    if let Some(path) =
+        std::env::var_os("PREEMPT_GGUF").or_else(|| std::env::var_os("AUTO_TERMINAL_GGUF"))
     {
         return Some(PathBuf::from(path));
     }
@@ -198,7 +226,7 @@ fn run_worker(model_path: PathBuf, shared: Arc<Shared>, candidate_limit: usize) 
                 model,
                 context,
                 &request.input,
-                request.id,
+                request.sample_seed,
                 candidate_limit,
                 &is_cancelled,
             ),
@@ -257,7 +285,7 @@ fn complete(
     model: &LlamaModel,
     context: &mut llama_cpp_2::context::LlamaContext<'_>,
     input: &str,
-    request_id: u64,
+    sample_seed: u32,
     candidate_limit: usize,
     is_cancelled: &impl Fn() -> bool,
 ) -> Result<Option<Vec<String>>, String> {
@@ -316,8 +344,7 @@ fn complete(
         let mut sampler = if candidate_index == 0 {
             LlamaSampler::greedy()
         } else {
-            let seed = (request_id as u32)
-                .wrapping_add((candidate_index as u32).wrapping_mul(0x9E37_79B9));
+            let seed = sample_seed.wrapping_add((candidate_index as u32).wrapping_mul(0x9E37_79B9));
             LlamaSampler::chain_simple([
                 LlamaSampler::top_k(40),
                 LlamaSampler::temp(0.8),

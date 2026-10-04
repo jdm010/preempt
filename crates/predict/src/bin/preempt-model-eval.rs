@@ -113,7 +113,11 @@ fn main() {
             let _ = sender.send(result);
         });
         let started = Instant::now();
-        prefetcher.request(example.prefix.clone(), handler);
+        prefetcher.request_with_seed(
+            example.prefix.clone(),
+            replay_sample_seed(&example.prefix),
+            handler,
+        );
 
         match receiver.recv_timeout(RESULT_TIMEOUT) {
             Ok(result) => {
@@ -461,7 +465,11 @@ fn score_cascade(
         });
         let started = Instant::now();
         t2_calls += 1;
-        prefetcher.request(example.prefix.clone(), handler);
+        prefetcher.request_with_seed(
+            example.prefix.clone(),
+            replay_sample_seed(&example.prefix),
+            handler,
+        );
 
         match receiver.recv_timeout(RESULT_TIMEOUT) {
             Ok(result) => {
@@ -536,6 +544,7 @@ fn score_cascade(
             "every request"
         }
     );
+    println!("T2 second-candidate sampling: stable per replay example");
     println!("T2 requests issued: {t2_calls}/{count}");
     println!("T2 requests with a candidate: {t2_coverage}/{t2_calls}");
     println!("T2 added a new cycleable candidate: {t2_added}/{t2_calls}");
@@ -553,6 +562,18 @@ fn score_cascade(
     if scoring_errors > 0 {
         std::process::exit(1);
     }
+}
+
+/// Seed stochastic candidates from the inference input, independent of replay order.
+/// The expected suffix is deliberately excluded to avoid leaking the label into sampling.
+/// FNV-1a is used because its output is stable across Rust toolchain versions.
+fn replay_sample_seed(input_prefix: &str) -> u32 {
+    let mut hash = 0x811C_9DC5_u32;
+    for byte in input_prefix.bytes() {
+        hash ^= u32::from(byte);
+        hash = hash.wrapping_mul(0x0100_0193);
+    }
+    hash
 }
 
 fn print_micro_latency_summary(label: &str, latencies: &[Duration]) {

@@ -73,14 +73,23 @@ separate from the MLX scores above.
 A timestamp-aware cascade replay on 2026-09-30 found T0/T1 candidates on 78 of
 128 requests, including 5 exact suffixes. T2 added 2 exact suffixes. Together,
 the tiers had 7 exact suffixes, and the first suggestion was exact on 6 inputs.
-T0/T1 took 24 µs median and 72 µs p95. T2 took 1,162 ms warm median and
-2,347 ms p95. The report describes the method and includes a chart.
+These are historical results; the report includes a newer replay below.
 
-On the same holdout, triggering T2 only when T0/T1 had no candidate reduced
-T2 requests from 128 to 50. With two candidates it retained 7 combined exact
-suffixes and 6 top-1 hits; with one candidate it retained 6 exact candidate
-hits and the same 6 top-1 hits. Second-candidate sampling makes per-run
-alternatives variable; policy details and latency samples are in the report.
+On 2026-10-04, we exported a fresh private dataset from 999 local history
+entries (395 redaction-safe unique commands; 63 skipped) and evaluated an
+evenly spread sample of 128 from 437 validation examples. The evaluator seeded
+stochastic candidates from the input prefix alone, so all-request and
+fast-miss-only policies used the same T2 candidates for each prompt without
+using the expected suffix to choose model output.
+
+The T0/T1 engine had candidates on 81/128 inputs and 7 exact top-1 hits. With
+two T2 candidates, invoking T2 only on fast-tier misses made 47 rather than 128
+model requests (63% fewer). It kept combined top-1 exact hits at 9/128 and
+combined candidate availability at 122/128, while the all-request policy found
+one additional exact cycleable alternative (10 rather than 9). Warm T2 latency
+was 779 ms median and 1,165 ms p95 over the 47 selective requests. The app now
+uses this fast-miss trigger and keeps the two-candidate budget. See the report
+for both candidate budgets, latency samples, and graphs.
 
 Preempt loads the GGUF model; it does not load the MLX adapter. The MLX guide
 lists GGUF export for Llama, Mistral, and Mixtral, but not Qwen3.5

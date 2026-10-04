@@ -13,9 +13,11 @@ Alacritty source tree, and a history-based prediction CLI.
 - **T0:** prefix completion ranked by history frequency and recency.
 - **T1:** token n-gram fallback when no full-command prefix matches.
 - **T2:** optional Qwen3.5-0.8B inference through llama.cpp. The model file is
-  not included. In our 128-input test, two candidates returned a suggestion
-  for 119 inputs. Warm latency was 806 ms median, above the 150 ms target. See
-  [MODEL.md](MODEL.md) and the [evaluation report](training/REPORT.md).
+  not included, and T2 runs only when T0/T1 has no candidate. In a paired
+  128-input replay, this reduced T2 requests from 128 to 47 and kept top-1
+  exact hits at 9/128, with one fewer exact cycleable alternative. Warm latency
+  was 779 ms median, above the 150 ms target. See [MODEL.md](MODEL.md) and the
+  [evaluation report](training/REPORT.md).
 - **Safety hints:** heuristic risk labels for common destructive commands.
   These hints do not parse or block commands.
 - **Local history storage:** SQLCipher-backed history and feedback storage,
@@ -74,8 +76,7 @@ existing model files and encrypted history remain available. Use
   status.
 - [MODEL.md](MODEL.md) documents the optional local model and pinned download.
 - [training/README.md](training/README.md) explains the local training workflow.
-- [training/REPORT.md](training/REPORT.md) records the first training run and
-  evaluation results.
+- [training/REPORT.md](training/REPORT.md) records training and replay results.
 - [crates/core/UPSTREAM.md](crates/core/UPSTREAM.md) records the vendored
   Alacritty and `vte` source revisions and retained license notices.
 

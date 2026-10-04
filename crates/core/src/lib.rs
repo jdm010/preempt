@@ -166,7 +166,9 @@ impl PredictionOverlay {
             .collect();
 
         self.arm_pending_feedback();
-        self.request_t2(input_line);
+        if self.candidates.is_empty() {
+            self.request_t2(input_line);
+        }
     }
 
     pub fn has_suggestion(&self) -> bool {

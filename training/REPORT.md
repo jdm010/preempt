@@ -1,6 +1,6 @@
 # Local T2 training and evaluation
 
-**Training run:** 2026-09-29 · **Cascade replay:** 2026-09-30
+**Training run:** 2026-09-29 · **Historical cascade:** 2026-09-30 · **Paired policy replay:** 2026-10-04
 **Status:** exploratory; the trained adapter is not used by the terminal
 
 ## Summary
@@ -11,15 +11,12 @@ and produced fewer clean outputs than the base model, so the app does not use
 it. The GGUF sweep led us to lower the default candidate count from three to
 two: exact-match count stayed the same while latency fell.
 
-A fresh command-disjoint replay found an exact suffix in 5/128 T0/T1 candidate
-sets and 2/128 T2 candidate sets. Their union contained 7/128 exact suffixes;
-the app-order top suggestion was exact on 6/128. T0/T1 prediction was fast
-(24 µs median, 72 µs p95), while T2 remained slow (1,162 ms warm median,
-2,347 ms p95).
-
-Policy replays showed that invoking T2 only on fast-tier misses reduced model
-requests from 128 to 50. With two candidates, it retained 7 combined exact
-suffixes and 6 top-1 hits in this holdout; one candidate retained 6 and 6.
+The historical 2026-09-30 cascade replay found 7/128 combined exact suffixes
+and 6 exact top suggestions. A fresh 2026-10-04 replay then compared both T2
+trigger policies with stable per-example sampling. Triggering T2 only after
+T0/T1 misses reduced model requests from 128 to 47, kept top-1 exact hits at
+9/128, and kept two-candidate combined availability at 122/128. It returned
+one fewer exact cycleable alternative than requesting T2 for every input.
 
 ## Data preparation
 
@@ -186,31 +183,45 @@ but does not apply persisted feedback-based reranking.
 
 ### Candidate budget and trigger policy
 
-We compared all-request T2 against a policy that queues T2 only when the fast
-T0/T1 engine has no candidate. The four runs use the same 128-example holdout
-and timestamped training-side history:
+On 2026-10-04, we exported a fresh private dataset from 999 local history
+entries: 395 unique commands passed redaction and 63 were skipped. It contained
+3,823 training examples and 437 validation examples. The evaluator sampled 128
+validation examples evenly and indexed 823 safe training-history entries across
+356 distinct commands. The private dataset was deleted after the replay; only
+aggregate results are recorded here.
+
+The evaluator now derives each stochastic sampling seed from the input prefix
+alone using stable FNV-1a hashing. It does not use the expected suffix to
+choose model output. Request IDs still handle cancellation, but no longer
+determine replay sampling. Thus identical prompts use identical T2 candidates,
+and skipping fast-tier hits does not change the output for examples both
+policies evaluate. All four runs below used the same 128-example holdout and
+timestamped training-side history:
 
 | Policy | T2 requests | T2 requests with candidates | Combined requests with candidates | Combined top-1 exact | Combined exact in candidates | T2 warm median / p95 |
 |---|---:|---:|---:|---:|---:|---:|
-| All requests, 1 candidate | 128/128 | 95/128 | 114/128 | 6/128 | 7/128 | 646 / 1,952 ms |
-| All requests, 2 candidates | 128/128 | 119/128 | 123/128 | 6/128 | 7/128 | 1,191 / 2,767 ms |
-| Fast misses only, 1 candidate | 50/128 | 36/50 | 114/128 | 6/128 | 6/128 | 644 / 1,676 ms |
-| Fast misses only, 2 candidates | 50/128 | 49/50 | 127/128 | 6/128 | 7/128 | 1,237 / 3,863 ms |
+| All requests, 1 candidate | 128/128 | 100/128 | 117/128 | 9/128 | 10/128 | 477 / 953 ms |
+| All requests, 2 candidates | 128/128 | 120/128 | 122/128 | 9/128 | 10/128 | 738 / 1,222 ms |
+| Fast misses only, 1 candidate | 47/128 | 36/47 | 117/128 | 9/128 | 9/128 | 510 / 763 ms |
+| Fast misses only, 2 candidates | 47/128 | 41/47 | 122/128 | 9/128 | 9/128 | 779 / 1,165 ms |
 
-The selective trigger reduced T2 requests by **61%**. In this replay, both
-two-candidate policies had 7 exact suffixes in the combined set and 6 exact
-app-order top suggestions. The one-candidate full path had the same scores;
-the one-candidate selective path lost one exact alternate but kept top-1
-unchanged. The two-candidate path returned more cycleable alternatives, at a
-higher per-request cost. Selective triggering reduces the number of model
-requests; it does not make each individual T2 response faster.
+The fast-miss trigger reduced T2 requests by **63%**. Top-1 exact hits stayed
+at 9/128 for every row. With either candidate budget, the selective policy
+reduced combined exact-in-candidates from 10 to 9 because one exact alternate
+was returned by T2 on an input where T0/T1 already had a suggestion. Combined
+candidate availability was unchanged between trigger policies for each budget:
+117/128 with one candidate and 122/128 with two. The two-candidate selective
+run returned more candidates (41/47 versus 36/47) without adding an exact hit.
+We kept two candidates for the extra coverage and adopted the fast-miss trigger
+in the app. It reduces total model work, not the latency of an individual T2
+response.
 
 ```mermaid
 xychart-beta
     title "Combined exact suffix hits by policy"
     x-axis "Order: full-1, full-2, miss-only-1, miss-only-2" [1, 2, 3, 4]
-    y-axis "Exact suffix hits" 0 --> 8
-    bar [7, 7, 6, 7]
+    y-axis "Exact suffix hits" 0 --> 12
+    bar [10, 10, 9, 9]
 ```
 
 ```mermaid
@@ -218,14 +229,15 @@ xychart-beta
     title "T2 requests issued by policy"
     x-axis "Order: full-1, full-2, miss-only-1, miss-only-2" [1, 2, 3, 4]
     y-axis "Requests" 0 --> 128
-    bar [128, 128, 50, 50]
+    bar [128, 128, 47, 47]
 ```
 
-The second candidate is sampled using the worker's request ID as its seed, so
-skipping requests changes the sampled alternative. The second-candidate rows
-are therefore practical policy samples, not perfectly paired deterministic
-comparisons. Latency also varied across process runs and prompt subsets; use the
-request counts and exact-match totals as the stronger signals.
+The T0/T1 stage measured 9 µs median and 25 µs p95 in the two-candidate
+fast-miss run. T2's first request took 1,202 ms; warm requests measured 779 ms
+median and 1,165 ms p95 over 46 samples. The all-request two-candidate run had
+738 ms median and 1,222 ms p95 over 127 warm samples. Cold startup and wall-clock
+latency vary between processes, so treat them as single-machine samples; the
+paired request counts and exact-match totals are the stronger policy signals.
 
 ## Adapter/runtime status
 
@@ -264,5 +276,8 @@ and its shell syntax checked.
 - Keep the current adapter disabled; this run did not improve exact completion
   accuracy and the full adapter reduced clean output rate.
 - Keep two as the default T2 candidate limit based on the coverage/latency tradeoff.
-- Improve T2 runtime latency or evaluate a trigger policy before another
+- Invoke T2 only when T0/T1 has no candidate. This reduced calls by 63% and
+  kept top-1 exact hits unchanged, at the cost of one exact cycleable alternate
+  in this 128-example replay.
+- Improve T2 runtime latency toward the 150 ms target before another
   personalization run. The current adapter still did not improve completions.

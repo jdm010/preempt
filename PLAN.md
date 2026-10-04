@@ -10,14 +10,14 @@ suggestions. The prediction code has no cloud service.
 |---|---|
 | T0 history matching | Implemented. Ranks command prefixes by frequency and recency. |
 | T1 n-gram fallback | Implemented. Runs when T0 has no match. |
-| T2 local model | Experimental. The two-candidate run returned a candidate for 119 of 128 inputs. Warm latency was 806 ms median and 1,468 ms p95; the target is 150 ms. |
+| T2 local model | Experimental. The app now requests T2 only when T0/T1 has no candidate. In the latest replay, T2 returned a candidate for 41 of 47 misses with two candidates; the full cascade returned a candidate for 122 of 128 inputs. Warm T2 latency was 779 ms median and 1,165 ms p95; the target is 150 ms. |
 | Risk hints | Implemented as UI labels. They do not block commands. |
 | History and feedback | Stored locally in a SQLCipher database. The key is kept in the operating system's credential store. |
 | Terminal overlay | Displays ghost text and accepts or cycles suggestions. A zsh hook supplies the current input line. |
 | Cloud prediction | Not implemented. |
 
-The T0/T1 replay measured 24 µs median and 72 µs p95. See the [evaluation
-report](training/REPORT.md) for the test setup and results.
+The latest T0/T1 replay measured 9 µs median and 25 µs p95. See the
+[evaluation report](training/REPORT.md) for the setup and full results.
 
 ## Milestones
 
@@ -35,10 +35,13 @@ report](training/REPORT.md) for the test setup and results.
   - In the GGUF candidate sweep, two candidates produced 2 exact completions
     out of 128 and returned at least one candidate for 119 inputs. Warm median
     latency was 806 ms, above the 150 ms target.
-  - In a separate cascade replay, T0/T1 produced 5 exact completions and T2
-    added 2. The combined set had 7; the first suggestion was exact on 6 inputs.
-  - Next: reduce T2 latency, make replay comparisons more repeatable, and
-    evaluate the fast-tier miss trigger before another training run.
+  - A repeatable 128-example replay on 2026-10-04 found 7 exact T0/T1 hits.
+    Triggering T2 only on the 47 fast-tier misses kept top-1 exact hits at 9,
+    compared with all-request T2, and returned candidates on the same 122
+    inputs with two candidates. It found one fewer exact cycleable alternative
+    (9 rather than 10) while reducing T2 calls by 63%. The app uses this trigger.
+  - Next: reduce T2 latency toward 150 ms and keep measuring quality on fresh
+    local holdouts before another training run.
 - **P3 — future work.** Consider opt-in cloud prediction, a natural-language
   command bar, error recovery, packaging, signing, and automatic updates.
 
@@ -50,8 +53,9 @@ report](training/REPORT.md) for the test setup and results.
 - Default mode: no network requests.
 - Rendering: within 10% of stock Alacritty.
 
-The measured results are listed above. There is no project CI or release
-pipeline yet.
+On the 2026-10-04 replay, the T0/T1 stage took 9 µs median and 25 µs p95. With
+the selected fast-miss trigger and two T2 candidates, warm model latency was
+793 ms median and 1,193 ms p95. There is no project CI or release pipeline yet.
 
 ## Privacy requirements
 
