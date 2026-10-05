@@ -118,6 +118,12 @@ base, 125/128 for step 300, and 123/128 for step 600. Neither checkpoint
 improved on the base, so no adapter is enabled. See the [report](REPORT.md)
 for details.
 
+We also compared a public Q4_K_M NL2Shell checkpoint with a matching Qwen3.5
+Base Q4_K_M model using the same 128 local holdout prompts and Preempt runtime.
+NL2Shell did not improve exact completions or candidate availability. This
+supports keeping generic natural-language-to-Bash data out of the main training
+set unless a later evaluation shows a benefit; see the report for details.
+
 The overlay records resolved accepts and rejects by prediction tier. Inspect
 the local aggregate counts and rates with:
 

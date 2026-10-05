@@ -37,6 +37,10 @@ The latest T0/T1 replay measured 9 µs median and 25 µs p95. See the
     suffixes. Clean one-line output was 128/128 for the base, 125/128 at step
     300, and 123/128 at step 600. Neither adapter checkpoint beat the base, so
     the adapter remains disabled.
+  - A paired replay of public Qwen3.5-0.8B Base and NL2Shell Q4_K_M models on
+    the same 128 prompts found 2/128 versus 1/128 top-1 exact suffixes and
+    candidate availability of 117/128 versus 107/128. Generic command fine-
+    tuning did not improve this partial-command task.
   - Added `preempt-feedback-report` to show aggregate accept/reject counts and
     rates by prediction tier from the existing encrypted database. It does not
     print command text or fingerprints and does not create a database. No local

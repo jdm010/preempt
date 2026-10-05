@@ -1,6 +1,6 @@
 # Local T2 training and evaluation
 
-**Training run:** 2026-09-29 · **Historical cascade:** 2026-09-30 · **Paired policy replay:** 2026-10-04 · **Checkpoint replay:** 2026-10-05
+**Training run:** 2026-09-29 · **Historical cascade:** 2026-09-30 · **Paired policy replay:** 2026-10-04 · **Checkpoint and public-model replays:** 2026-10-05
 **Status:** exploratory; the trained adapter is not used by the terminal
 
 ## Summary
@@ -119,6 +119,35 @@ output rate over the base. The step-300 checkpoint did format more often than
 step 600 on this sample, but still fell short of the base. These results use a
 fresh validation sample and should not be compared directly with the earlier
 98/128 clean result from step 600. The adapter remains disabled.
+
+### Public command-model replay (2026-10-05)
+
+To test whether general shell-command fine-tuning helps this completion task,
+we compared two Q4_K_M GGUF models using the same 128-example private holdout,
+Preempt's T2 prompt and Rust inference path, and a two-candidate budget. The
+Qwen3.5-0.8B Base model came from
+[bartowski/Qwen_Qwen3.5-0.8B-GGUF](https://huggingface.co/bartowski/Qwen_Qwen3.5-0.8B-GGUF)
+at revision `f36b1ea49a332ede8fe5f389bbf5b3575ef71f48`; the NL2Shell model came
+from [AryaYT/nl2shell-0.8b](https://huggingface.co/AryaYT/nl2shell-0.8b) at
+revision `d043800b678f8a879ee47219694eb2d00f048f5a`. Both files passed
+SHA-256 verification before evaluation (base `fb044e93939a70469c905781334f5de1e6c8b608ced6cbc8c9249bd4127d9526`;
+NL2Shell `0127b84d81ad303563666a00d1a91c0a68a63686ac4f1b0b74ecc40466ae0f52`).
+The models and private holdout remained in owner-only app data and were removed
+afterward.
+
+| Model | Top-1 exact suffixes | Exact among candidates | Candidate availability | Cold first request | Warm full-request median / p95 |
+|---|---:|---:|---:|---:|---:|
+| Qwen3.5-0.8B Base Q4_K_M | 2/128 | 3/128 | 117/128 | 1,551 ms | 336 / 753 ms |
+| NL2Shell-0.8B Q4_K_M | 1/128 | 1/128 | 107/128 | 1,952 ms | 327 / 798 ms |
+
+The public command-tuned model did not improve exact completion or candidate
+availability under Preempt's prefix-completion prompt. Its training task is
+natural-language request to full Bash command, so this is evidence against
+using that corpus as the main T2 training data, not a general judgment on
+NL2Shell for its intended use. The two files came from separate GGUF
+conversion pipelines, so this is a practical model comparison rather than a
+controlled quantization study. Aggregate-only evaluation suppressed command
+text.
 
 ## GGUF runtime results
 
