@@ -91,12 +91,14 @@ was 779 ms median and 1,165 ms p95 over the 47 selective requests. The app now
 uses this fast-miss trigger and keeps the two-candidate budget. See the report
 for both candidate budgets, latency samples, and graphs.
 
-On 2026-10-05, a separate 64-input replay measured streaming latency with the
-same two-candidate budget. The first usable candidate arrived at a 574 ms warm
-median and 1,062 ms p95 (21 warm samples); the full set arrived at a 776 ms
-warm median and 1,569 ms p95 (24 warm samples). The first-candidate metric only
-includes requests that returned a candidate, so its sample set differs from
-the full-set latency metric. The target remains 150 ms.
+On 2026-10-05, shortening the T2 prompt reduced it from 92–95 tokens to 57–60.
+On a 128-input fast-miss replay with the shorter prompt, top-1 and exact
+cycleable hits remained at 9/128, while combined candidate availability rose
+from 122/128 to 125/128. Warm latency was 401 ms median to the first candidate
+and 592 ms to the complete two-candidate set (p95 625 and 872 ms, respectively).
+The first-candidate metric had 43 warm samples; full-set latency had 46. The
+150 ms target remains unmet; see the report for the same-64-input comparison
+and phase timings.
 
 Preempt loads the GGUF model; it does not load the MLX adapter. The MLX guide
 lists GGUF export for Llama, Mistral, and Mixtral, but not Qwen3.5

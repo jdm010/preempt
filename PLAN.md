@@ -10,7 +10,7 @@ suggestions. The prediction code has no cloud service.
 |---|---|
 | T0 history matching | Implemented. Ranks command prefixes by frequency and recency. |
 | T1 n-gram fallback | Implemented. Runs when T0 has no match. |
-| T2 local model | Experimental. The app requests T2 only on T0/T1 misses and streams its first candidate. A 64-input replay measured 574 ms warm median to the first candidate and 776 ms to the complete two-candidate set; the target is 150 ms. |
+| T2 local model | Experimental. The app requests T2 only on T0/T1 misses and streams its first candidate. With a shorter prompt, a 128-input replay measured 401 ms warm median to the first candidate and 592 ms to the complete two-candidate set; the target is 150 ms. |
 | Risk hints | Implemented as UI labels. They do not block commands. |
 | History and feedback | Stored locally in a SQLCipher database. The key is kept in the operating system's credential store. |
 | Terminal overlay | Displays ghost text and accepts or cycles suggestions. A zsh hook supplies the current input line. |
@@ -40,15 +40,20 @@ The latest T0/T1 replay measured 9 µs median and 25 µs p95. See the
     compared with all-request T2, and returned candidates on the same 122
     inputs with two candidates. It found one fewer exact cycleable alternative
     (9 rather than 10) while reducing T2 calls by 63%. The app uses this trigger.
-  - On a separate 64-input replay, streaming measured a 574 ms warm median to
+  - Before prompt shortening, a 64-input replay measured a 574 ms warm median to
     the first usable candidate (21 samples) and 776 ms to the full set (24
     samples); the sample sets differ. Combined candidates contained 6/64 exact
     completions.
   - A local phase profile found about 186 ms median prompt evaluation for a
     92–95-token prompt on four CPU threads. A small thread-count comparison
     favored the existing four-thread default.
-  - Next: reduce prompt-evaluation cost and measure quality on fresh local
-    holdouts before another training run.
+  - Shortening the prompt reduced it from 92–95 tokens to 57–60 and prompt
+    evaluation to 128 ms median. On the same 64-input holdout, top-1 exact
+    completions rose from 5 to 6, exact-in-candidates stayed at 6, and
+    availability rose from 61 to 63. The 128-input replay kept 9 top-1 and
+    exact candidate completions, with availability rising from 122 to 125.
+  - Next: reduce first-candidate latency further while preserving holdout
+    quality before another training run.
 - **P3 — future work.** Consider opt-in cloud prediction, a natural-language
   command bar, error recovery, packaging, signing, and automatic updates.
 
@@ -60,10 +65,10 @@ The latest T0/T1 replay measured 9 µs median and 25 µs p95. See the
 - Default mode: no network requests.
 - Rendering: within 10% of stock Alacritty.
 
-On the 2026-10-04 replay, the T0/T1 stage took 9 µs median and 25 µs p95. A
-2026-10-05 replay measured 574 ms warm median to the first usable T2 candidate
-(21 samples) and 776 ms to the full two-candidate set (24 samples). There is
-no project CI or release pipeline yet.
+On the 2026-10-04 replay, the T0/T1 stage took 9 µs median and 25 µs p95. In
+the 2026-10-05 shorter-prompt replay, warm T2 latency was 401 ms median to the
+first candidate and 592 ms to the full two-candidate set. There is no project
+CI or release pipeline yet.
 
 ## Privacy requirements
 

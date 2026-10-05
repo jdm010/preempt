@@ -233,13 +233,13 @@ xychart-beta
 ```
 
 The T0/T1 stage measured 9 µs median and 25 µs p95 in the two-candidate
-fast-miss run. T2's first request took 1,202 ms; warm requests measured 779 ms
+fast-miss run. With the original prompt, T2's first request took 1,202 ms; warm requests measured 779 ms
 median and 1,165 ms p95 over 46 samples. The all-request two-candidate run had
 738 ms median and 1,222 ms p95 over 127 warm samples. Cold startup and wall-clock
 latency vary between processes, so treat them as single-machine samples; the
 paired request counts and exact-match totals are the stronger policy signals.
 
-### Streaming first-candidate latency
+### Streaming first-candidate latency (original prompt)
 
 On 2026-10-05, we replayed a fresh 64-input sample from a private dataset
 exported from 999 local history entries (395 redaction-safe unique commands;
@@ -274,7 +274,7 @@ These figures are a small, single-machine sample and are sensitive to model
 startup and system load. In the chart, the first line is warm median and the
 second is warm p95.
 
-### CPU thread and phase profile
+### CPU thread and phase profile (original prompt)
 
 A follow-up diagnostic replay used six generic shell prefixes, one candidate
 per request, and five warm requests after the cold first request. On the M3
@@ -295,8 +295,54 @@ tokens and measured 186 ms median prompt evaluation (170–188 ms across five
 samples). Prompt construction was about 1 ms. Suffix generation took 56 ms at
 the median and ranged from 46 to 147 ms, depending on output length. The
 220 ms debounce is outside these phase measurements and remains part of the
-end-to-end latency. The next optimization should reduce prompt-evaluation work
-while preserving holdout completion quality.
+end-to-end latency. This profile motivated the prompt-compression replay below.
+
+### Prompt compression replay
+
+On 2026-10-05, we shortened the prompt while keeping the command-prefix tags
+and the instruction to treat command text as data. The system prompt now gives
+the output constraints once, and the user message contains only the tagged
+prefix. This reduced prompt length from 92–95 to 57–60 tokens on the six
+diagnostic prefixes. The same fresh private export from 999 history entries
+(395 redaction-safe unique commands; 63 skipped) was used for both prompts and
+deleted after evaluation.
+
+We compared both prompts on the same 64 validation examples, with the same
+timestamped T0/T1 history, fast-miss trigger, and two-candidate budget:
+
+| Prompt | T2 with candidates | Combined availability | Combined top-1 exact | Combined exact in candidates | First-candidate warm median / p95 | Full-set warm median / p95 |
+|---|---:|---:|---:|---:|---:|---:|
+| Original | 22/25 | 61/64 | 5/64 | 6/64 | 524 / 736 ms (21) | 730 / 1,156 ms (24) |
+| Shorter | 24/25 | 63/64 | 6/64 | 6/64 | 415 / 616 ms (23) | 628 / 857 ms (24) |
+
+```mermaid
+xychart-beta
+    title "Warm T2 latency before and after prompt compression"
+    x-axis "Original first, original full, shorter first, shorter full" [1, 2, 3, 4]
+    y-axis "Latency in milliseconds" 0 --> 1200
+    line [524, 730, 415, 628]
+    line [736, 1156, 616, 857]
+```
+
+In the chart, the first line is warm median and the second is warm p95. The
+first-candidate latency samples include only nonempty candidate responses, so
+their sample counts differ from full-result latency. The shorter prompt
+improved top-1 exact hits by one and retained all six exact candidates in this
+sample; combined availability rose by two inputs.
+
+We then scored 128 examples with the shorter prompt. It kept combined top-1
+and exact-in-candidates at 9/128, matching the earlier prompt replay, while
+T2 returned candidates on 44/47 fast misses rather than 41/47. Combined
+availability rose from 122/128 to 125/128. Warm first-candidate latency was
+401 ms median and 625 ms p95 over 43 samples; the full set was 592 ms median
+and 872 ms p95 over 46 samples. The 220 ms debounce remains included in these
+end-to-end times. Cold startup varied substantially between runs, so the warm
+results are more useful here.
+
+On the six generic diagnostic prefixes, the shorter prompt's warm prompt
+evaluation measured 128 ms median, down from 186 ms. That comparison used five
+warm samples and excluded debounce and model startup. The prompt change is
+retained; first-candidate latency remains above the 150 ms target.
 
 ## Adapter/runtime status
 
@@ -338,8 +384,9 @@ and its shell syntax checked.
 - Invoke T2 only when T0/T1 has no candidate. This reduced calls by 63% and
   kept top-1 exact hits unchanged, at the cost of one exact cycleable alternate
   in this 128-example replay.
-- Stream the first generated candidate to the overlay. In the 64-input replay,
-  its warm median was 574 ms; full two-candidate latency was 776 ms. Continue
+- Stream the first generated candidate to the overlay. Prompt compression
+  reduced warm median latency to 401 ms for the first candidate and 592 ms for
+  the full set, while retaining quality on the 128-example replay. Continue
   reducing first-candidate latency toward 150 ms.
 - Improve T2 runtime latency toward the 150 ms target before another
   personalization run. The current adapter still did not improve completions.

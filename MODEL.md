@@ -39,3 +39,9 @@ generation count. On the development M3 Mac, a small six-prefix, one-candidate
 replay found four threads fastest at a 476 ms warm median; two threads measured
 585 ms, one measured 865 ms, and eight measured 501 ms. Treat this as an
 exploratory local comparison, not a cross-machine recommendation.
+
+The current shorter prompt uses 57–60 tokens on the same sample prefixes,
+down from 92–95, and reduced median prompt evaluation from 186 ms to 128 ms.
+The accompanying 128-input holdout replay measured a 401 ms warm median to the
+first candidate. These measurements are documented in the
+[evaluation report](training/REPORT.md).
