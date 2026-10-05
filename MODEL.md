@@ -41,7 +41,9 @@ replay found four threads fastest at a 476 ms warm median; two threads measured
 exploratory local comparison, not a cross-machine recommendation.
 
 The current shorter prompt uses 57–60 tokens on the same sample prefixes,
-down from 92–95, and reduced median prompt evaluation from 186 ms to 128 ms.
-The accompanying 128-input holdout replay measured a 401 ms warm median to the
-first candidate. These measurements are documented in the
+down from 92–95. The worker caches the 40-token shared prompt prefix in a
+20,694,572-byte llama state and evaluates only the request-specific suffix.
+This reduced median prompt evaluation from 186 ms to 61 ms. The accompanying
+128-input holdout replay measured a 340 ms warm median to the first candidate.
+These measurements are documented in the
 [evaluation report](training/REPORT.md).

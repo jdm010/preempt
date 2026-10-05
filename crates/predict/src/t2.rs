@@ -11,6 +11,8 @@ use llama_cpp_2::llama_batch::LlamaBatch;
 use llama_cpp_2::model::params::LlamaModelParams;
 use llama_cpp_2::model::{AddBos, LlamaChatMessage, LlamaModel};
 use llama_cpp_2::sampling::LlamaSampler;
+use llama_cpp_2::token::LlamaToken;
+use llama_cpp_2::{LlamaStateSeqFlags, SeqState};
 
 use crate::{t2_user_prompt, T2_SYSTEM_PROMPT};
 
@@ -39,6 +41,11 @@ struct Request {
     stream_candidates: bool,
     input: String,
     handler: ResultHandler,
+}
+
+struct PromptCache {
+    prefix_tokens: Vec<LlamaToken>,
+    state: SeqState,
 }
 
 #[derive(Default)]
@@ -250,6 +257,26 @@ fn run_worker(model_path: PathBuf, shared: Arc<Shared>, candidate_limit: usize) 
                 .map_err(|error| error.to_string())
         });
 
+    let prompt_cache = match (&model, &mut context) {
+        (Ok(model), Ok(context)) => match build_prompt_cache(model, context) {
+            Ok(cache) => {
+                if std::env::var_os("PREEMPT_T2_PROFILE").is_some() {
+                    eprintln!(
+                        "T2 profile: shared_prefix_tokens={} cached_state_bytes={}",
+                        cache.prefix_tokens.len(),
+                        cache.state.byte_len(),
+                    );
+                }
+                Some(cache)
+            }
+            Err(error) => {
+                eprintln!("T2 prompt-prefix cache unavailable: {error}");
+                None
+            }
+        },
+        _ => None,
+    };
+
     while let Some(request) = next_request(&shared) {
         let is_cancelled = || is_stale(&shared, request.id);
         let completion = match (&model, &mut context) {
@@ -260,6 +287,7 @@ fn run_worker(model_path: PathBuf, shared: Arc<Shared>, candidate_limit: usize) 
                 request.sample_seed,
                 candidate_limit,
                 request.stream_candidates,
+                prompt_cache.as_ref(),
                 &|completions| {
                     if !is_cancelled() {
                         (request.handler)(T2Result {
@@ -324,6 +352,52 @@ fn is_stale(shared: &Shared, request_id: u64) -> bool {
     })
 }
 
+fn build_prompt_cache(
+    model: &LlamaModel,
+    context: &mut llama_cpp_2::context::LlamaContext<'_>,
+) -> Result<PromptCache, String> {
+    let template = model
+        .chat_template(None)
+        .map_err(|error| format!("model chat template unavailable: {error}"))?;
+    let messages = [
+        LlamaChatMessage::new("system".to_owned(), T2_SYSTEM_PROMPT.to_owned())
+            .map_err(|error| error.to_string())?,
+        LlamaChatMessage::new("user".to_owned(), "<shell-command-prefix>\n".to_owned())
+            .map_err(|error| error.to_string())?,
+    ];
+    let prompt = model
+        .apply_chat_template(&template, &messages, true)
+        .map_err(|error| error.to_string())?;
+    let marker = "<shell-command-prefix>\n";
+    let prefix_end = prompt
+        .find(marker)
+        .map(|offset| offset + marker.len())
+        .ok_or_else(|| "chat template omitted the command-prefix marker".to_owned())?;
+    let prefix_tokens = model
+        .str_to_token(&prompt[..prefix_end], AddBos::Never)
+        .map_err(|error| error.to_string())?;
+    if prefix_tokens.is_empty() || prefix_tokens.len() >= CONTEXT_TOKENS as usize {
+        return Err("shared prompt prefix has an invalid token count".to_owned());
+    }
+
+    context.clear_kv_cache();
+    let mut batch = LlamaBatch::new(prefix_tokens.len(), 1);
+    batch
+        .add_sequence(&prefix_tokens, 0, false)
+        .map_err(|error| error.to_string())?;
+    context
+        .decode(&mut batch)
+        .map_err(|error| error.to_string())?;
+    let state = context
+        .state_seq_get(0, LlamaStateSeqFlags::empty())
+        .map_err(|error| error.to_string())?;
+
+    Ok(PromptCache {
+        prefix_tokens,
+        state,
+    })
+}
+
 fn complete(
     model: &LlamaModel,
     context: &mut llama_cpp_2::context::LlamaContext<'_>,
@@ -331,6 +405,7 @@ fn complete(
     sample_seed: u32,
     candidate_limit: usize,
     stream_candidates: bool,
+    prompt_cache: Option<&PromptCache>,
     on_partial: &impl Fn(&[String]),
     is_cancelled: &impl Fn() -> bool,
 ) -> Result<Option<Vec<String>>, String> {
@@ -374,6 +449,9 @@ fn complete(
     }
     let prompt_tokens = tokens.len();
     let prompt_preparation = prompt_started.elapsed();
+    let cached_suffix = prompt_cache
+        .filter(|cache| tokens.starts_with(&cache.prefix_tokens))
+        .map(|cache| (&cache.prefix_tokens, &cache.state));
 
     let mut completions = Vec::with_capacity(candidate_limit);
     for candidate_index in 0..candidate_limit {
@@ -382,11 +460,27 @@ fn complete(
         }
 
         let candidate_started = Instant::now();
-        context.clear_kv_cache();
-        let mut batch = LlamaBatch::new(tokens.len().max(1), 1);
-        batch
-            .add_sequence(&tokens, 0, false)
-            .map_err(|error| error.to_string())?;
+        let mut batch;
+        if let Some((prefix_tokens, state)) = cached_suffix {
+            context
+                .state_seq_set(state, 0)
+                .map_err(|error| error.to_string())?;
+            let suffix = &tokens[prefix_tokens.len()..];
+            batch = LlamaBatch::new(suffix.len().max(1), 1);
+            for (offset, token) in suffix.iter().enumerate() {
+                let position = i32::try_from(prefix_tokens.len() + offset)
+                    .map_err(|error| error.to_string())?;
+                batch
+                    .add(*token, position, &[0], offset + 1 == suffix.len())
+                    .map_err(|error| error.to_string())?;
+            }
+        } else {
+            context.clear_kv_cache();
+            batch = LlamaBatch::new(tokens.len().max(1), 1);
+            batch
+                .add_sequence(&tokens, 0, false)
+                .map_err(|error| error.to_string())?;
+        }
         context
             .decode(&mut batch)
             .map_err(|error| error.to_string())?;

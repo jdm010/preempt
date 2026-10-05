@@ -344,6 +344,42 @@ evaluation measured 128 ms median, down from 186 ms. That comparison used five
 warm samples and excluded debounce and model startup. The prompt change is
 retained; first-candidate latency remains above the 150 ms target.
 
+### Shared-prefix prompt cache
+
+The worker now saves the llama.cpp sequence state after the fixed 40-token
+system-and-prefix-marker portion of the prompt. For each candidate, it restores
+that snapshot and evaluates only the request-specific suffix. The snapshot is
+20,694,572 bytes and contains no command text. If the full prompt does not
+begin with the cached token prefix, inference falls back to evaluating the
+whole prompt.
+
+We replayed the same 128 examples with the shorter prompt and stable prefix
+seeds, comparing inference without and with the cache:
+
+| Runtime | T2 with candidates | Combined availability | Top-1 exact | Exact in candidates | First-candidate warm median / p95 | Full-set warm median / p95 |
+|---|---:|---:|---:|---:|---:|---:|
+| Short prompt, no cache | 44/47 | 125/128 | 9/128 | 9/128 | 401 / 625 ms (43) | 592 / 872 ms (46) |
+| Short prompt, cached prefix | 44/47 | 125/128 | 9/128 | 9/128 | 340 / 528 ms (43) | 484 / 763 ms (46) |
+
+```mermaid
+xychart-beta
+    title "Warm T2 latency before and after shared-prefix caching"
+    x-axis "No cache first, no cache full, cached first, cached full" [1, 2, 3, 4]
+    y-axis "Latency in milliseconds" 0 --> 900
+    line [401, 592, 340, 484]
+    line [625, 872, 528, 763]
+```
+
+In the chart, the first line is warm median and the second is warm p95. The
+first-candidate and full-result measurements have different sample counts.
+
+The cache reduced warm first-candidate median by 61 ms and full-set median by
+108 ms, with the same exact-match and candidate-availability results. The
+profiled request-specific prompt evaluation fell to 61 ms median on the six
+generic prefixes, down from 128 ms with the short prompt but no cache. The
+additional state snapshot uses about 20.7 MB; the 150 ms first-candidate goal
+remains unmet.
+
 ## Adapter/runtime status
 
 The MLX adapter was not converted to GGUF and the app does not load it. The
@@ -384,9 +420,9 @@ and its shell syntax checked.
 - Invoke T2 only when T0/T1 has no candidate. This reduced calls by 63% and
   kept top-1 exact hits unchanged, at the cost of one exact cycleable alternate
   in this 128-example replay.
-- Stream the first generated candidate to the overlay. Prompt compression
-  reduced warm median latency to 401 ms for the first candidate and 592 ms for
-  the full set, while retaining quality on the 128-example replay. Continue
-  reducing first-candidate latency toward 150 ms.
+- Stream the first generated candidate to the overlay. Prompt compression and
+  shared-prefix caching reduced warm median latency to 340 ms for the first
+  candidate and 484 ms for the full set, with holdout results unchanged.
+  Continue reducing first-candidate latency toward 150 ms.
 - Improve T2 runtime latency toward the 150 ms target before another
   personalization run. The current adapter still did not improve completions.
