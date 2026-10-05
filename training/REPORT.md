@@ -408,11 +408,41 @@ xychart-beta
 The first line is warm median and the second is warm p95. Reducing the
 production debounce to 100 ms lowered the first-candidate median by 168 ms and
 the full-set median by 152 ms compared with the 220 ms run. The 50 ms run
-reached a 141 ms first-candidate median, while its single-run p95 was 561 ms;
-the evaluator does not model keystroke cadence or the extra speculative work a
-shorter delay may trigger while someone is typing. We set 100 ms as the default
-and leave 50 ms for an interactive typing-load evaluation. At 100 ms, the
-first-candidate median remains above the 150 ms target.
+reached a 141 ms first-candidate median, while its single-run p95 was 561 ms.
+We followed with an interactive typing simulation before choosing a default.
+
+### Interactive typing and cancellation simulation
+
+The new `preempt-typing-sim` utility types 16 successive prefixes of a fixed
+synthetic command at 50, 80, 120, and 180 ms intervals. Each input cancels the
+previous T2 request, matching the overlay's request lifecycle. The run records
+latency from the final keystroke to its first candidate, earlier-prefix results
+that arrived before the next input, and cancelled prompt/generation work from
+`PREEMPT_T2_PROFILE`. It uses no shell history and prints no command or model
+completion text. This isolates T2 behavior; it does not simulate T0/T1 hits.
+
+| Debounce | Key interval | Final first-candidate latency | Interim-prefix results | Cancelled before / after prefill / during generation |
+|---:|---:|---:|---:|---:|
+| 100 ms | 50 ms | 232 ms | 0 | 0 / 0 / 0 |
+| 100 ms | 80 ms | 232 ms | 0 | 0 / 0 / 0 |
+| 100 ms | 120 ms | 261 ms | 0 | 0 / 8 / 0 |
+| 100 ms | 180 ms | 234 ms | 8 | 0 / 8 / 7 |
+| 50 ms | 50 ms | 170 ms | 0 | 4 / 3 / 0 |
+| 50 ms | 80 ms | 188 ms | 0 | 0 / 12 / 0 |
+| 50 ms | 120 ms | 162 ms | 6 | 0 / 8 / 7 |
+| 50 ms | 180 ms | 155 ms | 21 | 0 / 1 / 7 |
+
+Cancellation counts are before prefill (queued work dropped without inference),
+after prefill, and during generation, respectively.
+
+At 80 ms per key, the 50 ms debounce spent about 495 ms across 12 prompt
+evaluations that were cancelled after the input changed; the 100 ms debounce
+coalesced those updates without starting inference. At 180 ms per key, the
+shorter setting returned more intermediate-prefix results (21 versus 8) and
+reached the final candidate sooner. We keep 100 ms as the default to limit
+speculative work during typing. This single-command simulation is directional;
+first-candidate latency on the holdout remains 194 ms median, above the 150 ms
+target, so further work should reduce model inference time.
 
 ## Adapter/runtime status
 
@@ -439,7 +469,18 @@ does not mean the installed checkpoint itself is an untuned base model.
 - `training/evaluate.py` scores MLX holdout completions without printing them.
 - `crates/predict/src/bin/preempt-model-eval.rs --data DIR` scores the GGUF runtime
   using aggregate-only output; `--candidate-limit 1..3` compares latency budgets.
+- `crates/predict/src/bin/preempt-typing-sim.rs` measures T2 response and
+  cancellation behavior while synthetic prefixes arrive at fixed intervals.
 - `crates/predict/src/t2.rs` contains the runtime's two-candidate default.
+
+Run the synthetic cadence simulation with:
+
+```sh
+PREEMPT_T2_PROFILE=1 cargo run -p preempt-predict --features llama --bin preempt-typing-sim
+```
+
+Its standard output contains interval, latency, and interim-result counts;
+T2 profile lines on stderr contain per-candidate phase and cancellation times.
 
 The 600-step training completed and saved its adapter. The wrapper then exited
 with a shell error because its script was edited while that run was in progress;

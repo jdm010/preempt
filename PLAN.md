@@ -58,9 +58,10 @@ The latest T0/T1 replay measured 9 µs median and 25 µs p95. See the
   - Reducing the debounce from 220 to 100 ms on the same holdout lowered warm
     medians from 362 to 194 ms for the first candidate and 499 to 347 ms for
     the full set, with unchanged exact hits and coverage.
-  - Next: measure the interactive typing/cancellation load at 50 ms, then
-    reduce inference time further toward 150 ms while preserving holdout
-    quality.
+  - A synthetic typing simulation supports the 100 ms debounce: it coalesces
+    80 ms keystrokes without wasted prompt evaluation, while 50 ms starts
+    canceled work. Next, reduce inference time toward 150 ms while preserving
+    holdout quality.
 - **P3 — future work.** Consider opt-in cloud prediction, a natural-language
   command bar, error recovery, packaging, signing, and automatic updates.
 

@@ -456,6 +456,12 @@ fn complete(
     let mut completions = Vec::with_capacity(candidate_limit);
     for candidate_index in 0..candidate_limit {
         if is_cancelled() {
+            if profile {
+                eprintln!(
+                    "T2 profile: cancelled candidate={} phase=before_prompt_eval",
+                    candidate_index + 1,
+                );
+            }
             return Ok(None);
         }
 
@@ -485,6 +491,16 @@ fn complete(
             .decode(&mut batch)
             .map_err(|error| error.to_string())?;
         let prompt_evaluation = candidate_started.elapsed();
+        if is_cancelled() {
+            if profile {
+                eprintln!(
+                    "T2 profile: cancelled candidate={} phase=prompt_eval prompt_eval={}us",
+                    candidate_index + 1,
+                    prompt_evaluation.as_micros(),
+                );
+            }
+            return Ok(None);
+        }
 
         let mut sampler = if candidate_index == 0 {
             LlamaSampler::greedy()
@@ -503,6 +519,14 @@ fn complete(
         let generation_started = Instant::now();
         for _ in 0..MAX_OUTPUT_TOKENS {
             if is_cancelled() {
+                if profile {
+                    eprintln!(
+                        "T2 profile: cancelled candidate={} phase=generation generation={}us sampled_tokens={}",
+                        candidate_index + 1,
+                        generation_started.elapsed().as_micros(),
+                        sampled_tokens,
+                    );
+                }
                 return Ok(None);
             }
             let token = sampler.sample(context, -1);
