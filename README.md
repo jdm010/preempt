@@ -17,9 +17,9 @@ Alacritty source tree, and a history-based prediction CLI.
   128-input replay, the fast-miss policy made 47 T2 requests, kept 9/128
   top-1 exact hits and 9/128 exact cycleable candidates, and combined
   availability was 125/128.
-  With prompt-prefix caching, warm latency was 340 ms median to the first
-  candidate and 484 ms to the full two-candidate set, still above the 150 ms
-  target. See [MODEL.md](MODEL.md) and the
+  With prompt-prefix caching and a 100 ms debounce, warm latency was 194 ms
+  median to the first candidate and 347 ms to the full two-candidate set,
+  still above the 150 ms target. See [MODEL.md](MODEL.md) and the
   [evaluation report](training/REPORT.md).
 - **Safety hints:** heuristic risk labels for common destructive commands.
   These hints do not parse or block commands.

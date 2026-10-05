@@ -29,7 +29,7 @@ Metal support.
 Set `PREEMPT_T2_PROFILE=1` when launching Preempt or the model evaluator to
 write per-candidate prompt preparation, prompt evaluation, and generation
 times to stderr. The profile contains token counts and durations, not command
-text. These phase times exclude the worker's 220 ms debounce and model startup;
+text. These phase times exclude the worker's 100 ms debounce and model startup;
 the evaluator's end-to-end latency includes the debounce.
 
 `PREEMPT_T2_THREADS` overrides llama.cpp's generation thread count, which
@@ -44,6 +44,6 @@ The current shorter prompt uses 57–60 tokens on the same sample prefixes,
 down from 92–95. The worker caches the 40-token shared prompt prefix in a
 20,694,572-byte llama state and evaluates only the request-specific suffix.
 This reduced median prompt evaluation from 186 ms to 61 ms. The accompanying
-128-input holdout replay measured a 340 ms warm median to the first candidate.
-These measurements are documented in the
+128-input holdout replay with the 100 ms debounce measured a 194 ms warm median
+to the first candidate. These measurements are documented in the
 [evaluation report](training/REPORT.md).

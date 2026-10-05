@@ -94,11 +94,12 @@ for both candidate budgets, latency samples, and graphs.
 On 2026-10-05, shortening the T2 prompt reduced it from 92–95 tokens to 57–60.
 On a 128-input fast-miss replay with the shorter prompt, top-1 and exact
 cycleable hits remained at 9/128, while combined candidate availability rose
-from 122/128 to 125/128. With the shared prompt-prefix cache, warm latency was
-340 ms median to the first candidate and 484 ms to the complete two-candidate
-set (p95 528 and 763 ms, respectively). The first-candidate metric had 43 warm
-samples; full-set latency had 46. The 150 ms target remains unmet; see the
-report for the prompt comparison and phase timings.
+from 122/128 to 125/128. Shared prompt-prefix caching and a 100 ms debounce
+reduced warm latency to 194 ms median to the first candidate and 347 ms to the
+complete two-candidate set (p95 365 and 615 ms, respectively). The
+first-candidate metric had 43 warm samples; full-set latency had 46. The 150 ms
+target remains unmet; see the report for the prompt comparison and phase
+timings.
 
 Preempt loads the GGUF model; it does not load the MLX adapter. The MLX guide
 lists GGUF export for Llama, Mistral, and Mixtral, but not Qwen3.5

@@ -377,8 +377,42 @@ The cache reduced warm first-candidate median by 61 ms and full-set median by
 108 ms, with the same exact-match and candidate-availability results. The
 profiled request-specific prompt evaluation fell to 61 ms median on the six
 generic prefixes, down from 128 ms with the short prompt but no cache. The
-additional state snapshot uses about 20.7 MB; the 150 ms first-candidate goal
-remains unmet.
+additional state snapshot uses about 20.7 MB. At the then-current 220 ms
+debounce, the 150 ms first-candidate goal remained unmet.
+
+### Debounce tuning replay
+
+We replayed the same 128 validation examples and stable per-prefix seeds with
+the cached prompt at three debounce settings. The T2 request set and aggregate
+scores were unchanged across runs: 44/47 requests returned candidates,
+combined availability was 125/128, and top-1 and exact-in-candidates stayed at
+9/128. Latencies include the configured debounce and use 43 first-candidate
+samples and 46 full-result samples. The private export had 999 history entries,
+395 redaction-safe unique commands, and 63 skipped entries.
+
+| Debounce | Combined top-1 exact | Exact in candidates | First-candidate warm median / p95 | Full-set warm median / p95 |
+|---:|---:|---:|---:|---:|
+| 220 ms | 9/128 | 9/128 | 362 / 646 ms | 499 / 811 ms |
+| 100 ms | 9/128 | 9/128 | 194 / 365 ms | 347 / 615 ms |
+| 50 ms (exploratory) | 9/128 | 9/128 | 141 / 561 ms | 282 / 727 ms |
+
+```mermaid
+xychart-beta
+    title "Warm T2 latency by debounce setting"
+    x-axis "220 first, 220 full, 100 first, 100 full, 50 first, 50 full" [1, 2, 3, 4, 5, 6]
+    y-axis "Latency in milliseconds" 0 --> 900
+    line [362, 499, 194, 347, 141, 282]
+    line [646, 811, 365, 615, 561, 727]
+```
+
+The first line is warm median and the second is warm p95. Reducing the
+production debounce to 100 ms lowered the first-candidate median by 168 ms and
+the full-set median by 152 ms compared with the 220 ms run. The 50 ms run
+reached a 141 ms first-candidate median, while its single-run p95 was 561 ms;
+the evaluator does not model keystroke cadence or the extra speculative work a
+shorter delay may trigger while someone is typing. We set 100 ms as the default
+and leave 50 ms for an interactive typing-load evaluation. At 100 ms, the
+first-candidate median remains above the 150 ms target.
 
 ## Adapter/runtime status
 
@@ -420,9 +454,10 @@ and its shell syntax checked.
 - Invoke T2 only when T0/T1 has no candidate. This reduced calls by 63% and
   kept top-1 exact hits unchanged, at the cost of one exact cycleable alternate
   in this 128-example replay.
-- Stream the first generated candidate to the overlay. Prompt compression and
-  shared-prefix caching reduced warm median latency to 340 ms for the first
-  candidate and 484 ms for the full set, with holdout results unchanged.
+- Stream the first generated candidate to the overlay. Prompt compression,
+  shared-prefix caching, and a 100 ms debounce reduced warm median latency to
+  194 ms for the first candidate and 347 ms for the full set, with holdout
+  results unchanged.
   Continue reducing first-candidate latency toward 150 ms.
 - Improve T2 runtime latency toward the 150 ms target before another
   personalization run. The current adapter still did not improve completions.

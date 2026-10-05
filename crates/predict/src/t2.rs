@@ -16,7 +16,7 @@ use llama_cpp_2::{LlamaStateSeqFlags, SeqState};
 
 use crate::{t2_user_prompt, T2_SYSTEM_PROMPT};
 
-const DEBOUNCE: Duration = Duration::from_millis(220);
+const DEBOUNCE: Duration = Duration::from_millis(100);
 const CONTEXT_TOKENS: u32 = 768;
 const MAX_PROMPT_TOKENS: usize = 640;
 const MAX_OUTPUT_TOKENS: usize = 48;

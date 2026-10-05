@@ -10,7 +10,7 @@ suggestions. The prediction code has no cloud service.
 |---|---|
 | T0 history matching | Implemented. Ranks command prefixes by frequency and recency. |
 | T1 n-gram fallback | Implemented. Runs when T0 has no match. |
-| T2 local model | Experimental. The app requests T2 only on T0/T1 misses, streams its first candidate, and caches the shared prompt prefix. A 128-input replay measured 340 ms warm median to the first candidate and 484 ms to the complete two-candidate set; the target is 150 ms. |
+| T2 local model | Experimental. The app requests T2 only on T0/T1 misses, streams its first candidate, caches the shared prompt prefix, and uses a 100 ms debounce. A 128-input replay measured 194 ms warm median to the first candidate and 347 ms to the complete two-candidate set; the target is 150 ms. |
 | Risk hints | Implemented as UI labels. They do not block commands. |
 | History and feedback | Stored locally in a SQLCipher database. The key is kept in the operating system's credential store. |
 | Terminal overlay | Displays ghost text and accepts or cycles suggestions. A zsh hook supplies the current input line. |
@@ -55,8 +55,12 @@ The latest T0/T1 replay measured 9 µs median and 25 µs p95. See the
   - Caching the shared 40-token prompt prefix reduced warm median latency on
     the 128-input replay from 401 to 340 ms for the first candidate and from
     592 to 484 ms for the full set, with unchanged exact hits and coverage.
-  - Next: reduce first-candidate latency further while preserving holdout
-    quality before another training run.
+  - Reducing the debounce from 220 to 100 ms on the same holdout lowered warm
+    medians from 362 to 194 ms for the first candidate and 499 to 347 ms for
+    the full set, with unchanged exact hits and coverage.
+  - Next: measure the interactive typing/cancellation load at 50 ms, then
+    reduce inference time further toward 150 ms while preserving holdout
+    quality.
 - **P3 — future work.** Consider opt-in cloud prediction, a natural-language
   command bar, error recovery, packaging, signing, and automatic updates.
 
@@ -69,9 +73,9 @@ The latest T0/T1 replay measured 9 µs median and 25 µs p95. See the
 - Rendering: within 10% of stock Alacritty.
 
 On the 2026-10-04 replay, the T0/T1 stage took 9 µs median and 25 µs p95. In
-the 2026-10-05 cached-prefix replay, warm T2 latency was 340 ms median to the
-first candidate and 484 ms to the full two-candidate set. There is no project
-CI or release pipeline yet.
+the 2026-10-05 replay with prompt-prefix caching and a 100 ms debounce, warm
+T2 latency was 194 ms median to the first candidate and 347 ms to the full
+two-candidate set. There is no project CI or release pipeline yet.
 
 ## Privacy requirements
 

@@ -67,7 +67,7 @@ fn main() {
     } else {
         println!("model: {}", args.model_path.display());
         println!(
-            "Each request includes the 220 ms debounce and generates up to {} candidates.",
+            "Each request includes the 100 ms debounce and generates up to {} candidates.",
             args.candidate_limit
         );
     }
