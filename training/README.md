@@ -109,3 +109,10 @@ A Qwen3.5 adapter-conversion failure was also reported in
 which GitHub now marks as closed as a duplicate. We have not tested newer
 conversion tools. The adapter stays disabled because it scored worse than the
 base model in this holdout.
+
+On 2026-10-05, we also evaluated the base model and the saved step-300 and
+step-600 adapters on a fresh 128-example sample from 437 validation examples.
+All three had 0 exact suffixes. Clean one-line outputs were 128/128 for the
+base, 125/128 for step 300, and 123/128 for step 600. Neither checkpoint
+improved on the base, so no adapter is enabled. See the [report](REPORT.md)
+for details.

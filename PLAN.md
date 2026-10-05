@@ -10,7 +10,7 @@ suggestions. The prediction code has no cloud service.
 |---|---|
 | T0 history matching | Implemented. Ranks command prefixes by frequency and recency. |
 | T1 n-gram fallback | Implemented. Runs when T0 has no match. |
-| T2 local model | Experimental. The app requests T2 only on T0/T1 misses, streams its first candidate, caches the shared prompt prefix, and adapts its debounce between 100 ms and 50 ms. A follow-up 128-input replay measured 151 ms warm median to the first candidate and 287 ms to the complete two-candidate set; the 150 ms target remains just out of reach. |
+| T2 local model | Experimental. The app requests T2 only on T0/T1 misses, streams its first candidate, caches the shared prompt prefix, and adapts its debounce between 100 ms and 50 ms. A 128-input replay measured 151 ms warm median to the first candidate and 287 ms to the complete two-candidate set. This is accepted for the current prototype; further latency work is deferred unless use shows a problem. |
 | Risk hints | Implemented as UI labels. They do not block commands. |
 | History and feedback | Stored locally in a SQLCipher database. The key is kept in the operating system's credential store. |
 | Terminal overlay | Displays ghost text and accepts or cycles suggestions. A zsh hook supplies the current input line. |
@@ -32,6 +32,11 @@ The latest T0/T1 replay measured 9 µs median and 25 µs p95. See the
     holdout, the base model and adapter both produced 0 exact completions. The
     adapter produced 98 clean one-line outputs; the base produced 128. The app
     does not use the adapter.
+  - A 2026-10-05 checkpoint-selection replay compared the base, step-300, and
+    step-600 MLX weights on a fresh 128-example sample. All scored 0 exact
+    suffixes. Clean one-line output was 128/128 for the base, 125/128 at step
+    300, and 123/128 at step 600. Neither adapter checkpoint beat the base, so
+    the adapter remains disabled.
   - In the GGUF candidate sweep, two candidates produced 2 exact completions
     out of 128 and returned at least one candidate for 119 inputs. Warm median
     latency was 806 ms, above the 150 ms target.
@@ -68,7 +73,8 @@ The latest T0/T1 replay measured 9 µs median and 25 µs p95. See the
     prefix cache added state-copy cost without consistent latency gains and
     was discarded. The adaptive debounce replay kept exact-match and coverage
     results unchanged and measured 151 ms warm median to the first candidate.
-    Continue reducing inference time while preserving holdout quality.
+    The measured 151 ms first-candidate median is accepted for the prototype;
+    resume latency work if real use shows it is too slow.
 - **P3 — future work.** Consider opt-in cloud prediction, a natural-language
   command bar, error recovery, packaging, signing, and automatic updates.
 
@@ -84,7 +90,8 @@ On the 2026-10-04 replay, the T0/T1 stage took 9 µs median and 25 µs p95. A
 2026-10-05 replay with prompt-prefix caching and a fixed 100 ms debounce
 measured 194 ms median to the first T2 candidate and 347 ms to the full set. A
 follow-up replay with the adaptive debounce measured 151 and 287 ms,
-respectively. There is no project CI or release pipeline yet.
+respectively. The user accepts this latency for the current prototype. There is
+no project CI or release pipeline yet.
 
 ## Privacy requirements
 

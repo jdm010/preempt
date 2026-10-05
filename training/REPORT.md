@@ -1,6 +1,6 @@
 # Local T2 training and evaluation
 
-**Training run:** 2026-09-29 · **Historical cascade:** 2026-09-30 · **Paired policy replay:** 2026-10-04
+**Training run:** 2026-09-29 · **Historical cascade:** 2026-09-30 · **Paired policy replay:** 2026-10-04 · **Checkpoint replay:** 2026-10-05
 **Status:** exploratory; the trained adapter is not used by the terminal
 
 ## Summary
@@ -98,6 +98,27 @@ The MLP-only row is a post-hoc subset of the trained adapter weights, not a
 separately trained run. It restored clean formatting but did not add an exact
 completion. The full adapter is therefore not an improvement over the base
 checkpoint on this evaluation.
+
+### Saved-checkpoint selection replay (2026-10-05)
+
+To check whether the final training step caused the formatting regression, we
+exported a fresh private dataset from 999 local history entries (395 unique
+redaction-safe commands; 63 skipped). We scored the base model and the saved
+step-300 and step-600 adapter weights on the same evenly spread sample of 128
+from 437 validation examples. The export and temporary checkpoint copy stayed
+in owner-only app data and were removed after scoring.
+
+| Model | Exact suffixes | Clean one-line outputs |
+|---|---:|---:|
+| Unadapted MLX checkpoint | 0/128 | 128/128 |
+| Step-300 adapter | 0/128 | 125/128 |
+| Step-600 adapter | 0/128 | 123/128 |
+
+Neither saved adapter checkpoint improved exact completion accuracy or clean
+output rate over the base. The step-300 checkpoint did format more often than
+step 600 on this sample, but still fell short of the base. These results use a
+fresh validation sample and should not be compared directly with the earlier
+98/128 clean result from step 600. The adapter remains disabled.
 
 ## GGUF runtime results
 
@@ -484,8 +505,9 @@ The first line is the warm median and the second is p95. Each quantization was
 evaluated in one local run, so the timings are directional. Q4_K_S had slightly
 more exact suggestions but a 62 ms slower first-candidate median than Q4_0.
 Q3_K_S had no exact T2 completion and was slowest in both prompt evaluation
-and generation. We kept Q4_0 as the local default. Its 216 ms median remains
-above the 150 ms goal, so the latency work is still open.
+and generation. We kept Q4_0 as the local default. Its measured latency was
+later reduced to 151 ms with adaptive debounce; that is accepted for the
+current prototype.
 
 ### Cadence-adaptive debounce replay
 
@@ -500,9 +522,9 @@ T2 candidate availability at 44/47, combined availability at 125/128, and
 combined top-1 and exact-in-candidates at 9/128. Warm first-candidate latency
 was 151 ms median and 357 ms p95 (43 samples), down from 216 / 402 ms in the
 matched fixed-100 ms run. The complete two-candidate set measured 287 / 547 ms
-(46 samples), down from 368 / 679 ms. This was one local run; the median is
-near, but still slightly above, the 150 ms target. More profiling is needed
-before claiming a stable target-level latency.
+(46 samples), down from 368 / 679 ms. This was one local run. The user accepts
+this latency for the current prototype; optimization can resume if use shows a
+problem.
 
 ## Adapter/runtime status
 
@@ -512,8 +534,8 @@ MLX guide lists GGUF export for Llama, Mistral, and Mixtral, but not Qwen3.5
 A Qwen3.5 adapter-conversion failure was reported in
 [llama.cpp issue #21125](https://github.com/ggml-org/llama.cpp/issues/21125);
 GitHub now marks it as closed as a duplicate. We have not tested newer
-conversion tools. The adapter stays disabled because it scored worse than the
-base model in this evaluation.
+conversion tools. The adapter stays disabled: the original run and fresh
+checkpoint-selection replay did not improve on the base model.
 
 The official [Qwen3.5-0.8B model card](https://huggingface.co/Qwen/Qwen3.5-0.8B)
 describes that checkpoint as post-trained and lists a separate
@@ -549,16 +571,18 @@ and its shell syntax checked.
 
 ## Decision and next work
 
-- Keep the current adapter disabled; this run did not improve exact completion
-  accuracy and the full adapter reduced clean output rate.
+- Keep the current adapter disabled; the original run and fresh checkpoint
+  replay produced no exact suffixes, and neither saved checkpoint matched the
+  base model's clean output rate.
 - Keep two as the default T2 candidate limit based on the coverage/latency tradeoff.
 - Invoke T2 only when T0/T1 has no candidate. This reduced calls by 63% and
   kept top-1 exact hits unchanged, at the cost of one exact cycleable alternate
   in this 128-example replay.
 - Stream the first generated candidate to the overlay. Prompt compression,
-  shared-prefix caching, and a 100 ms debounce reduced warm median latency to
-  194 ms for the first candidate and 347 ms for the full set, with holdout
-  results unchanged.
-  Continue reducing first-candidate latency toward 150 ms.
-- Improve T2 runtime latency toward the 150 ms target before another
-  personalization run. The current adapter still did not improve completions.
+  shared-prefix caching, and adaptive debounce reduced warm median latency to
+  151 ms for the first candidate and 287 ms for the full set, with holdout
+  results unchanged. This is accepted for the prototype; resume optimization
+  if use shows the latency is a problem.
+- Any further personalization attempt should test a materially different
+  training objective or data strategy. Repeating the same LoRA run or selecting
+  a different saved checkpoint is not supported by these results.
