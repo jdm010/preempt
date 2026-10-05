@@ -16,6 +16,10 @@ serde_json = "1.0.145"
 name = "preempt-training-data"
 path = "src/bin/preempt-training-data.rs"
 
+[[bin]]
+name = "preempt-feedback-report"
+path = "src/bin/preempt-feedback-report.rs"
+
 [target.'cfg(unix)'.dependencies]
 rusqlite = { version = "0.40.2", features = ["bundled-sqlcipher"] }
 

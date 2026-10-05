@@ -37,6 +37,11 @@ The latest T0/T1 replay measured 9 µs median and 25 µs p95. See the
     suffixes. Clean one-line output was 128/128 for the base, 125/128 at step
     300, and 123/128 at step 600. Neither adapter checkpoint beat the base, so
     the adapter remains disabled.
+  - Added `preempt-feedback-report` to show aggregate accept/reject counts and
+    rates by prediction tier from the existing encrypted database. It does not
+    print command text or fingerprints and does not create a database. No local
+    feedback database exists here yet, so real-use acceptance rates are not
+    available until the terminal records outcomes.
   - In the GGUF candidate sweep, two candidates produced 2 exact completions
     out of 128 and returned at least one candidate for 119 inputs. Warm median
     latency was 806 ms, above the 150 ms target.
