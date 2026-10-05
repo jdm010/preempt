@@ -33,8 +33,8 @@ use alacritty_terminal::tty;
 use crate::cli::{ParsedOptions, WindowOptions};
 use crate::clipboard::Clipboard;
 use crate::config::UiConfig;
-use crate::display::Display;
 use crate::display::window::Window;
+use crate::display::Display;
 use crate::event::{
     ActionContext, Event, EventProxy, EventType, InlineSearchState, Mouse, SearchState,
     TouchPurpose,
@@ -192,6 +192,7 @@ impl WindowContext {
                     result.request_id,
                     result.input,
                     result.completions,
+                    result.is_final,
                 ),
             ));
         }));

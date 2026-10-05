@@ -10,7 +10,7 @@ suggestions. The prediction code has no cloud service.
 |---|---|
 | T0 history matching | Implemented. Ranks command prefixes by frequency and recency. |
 | T1 n-gram fallback | Implemented. Runs when T0 has no match. |
-| T2 local model | Experimental. The app now requests T2 only when T0/T1 has no candidate. In the latest replay, T2 returned a candidate for 41 of 47 misses with two candidates; the full cascade returned a candidate for 122 of 128 inputs. Warm T2 latency was 779 ms median and 1,165 ms p95; the target is 150 ms. |
+| T2 local model | Experimental. The app requests T2 only on T0/T1 misses and streams its first candidate. A 64-input replay measured 574 ms warm median to the first candidate and 776 ms to the complete two-candidate set; the target is 150 ms. |
 | Risk hints | Implemented as UI labels. They do not block commands. |
 | History and feedback | Stored locally in a SQLCipher database. The key is kept in the operating system's credential store. |
 | Terminal overlay | Displays ghost text and accepts or cycles suggestions. A zsh hook supplies the current input line. |
@@ -40,8 +40,12 @@ The latest T0/T1 replay measured 9 µs median and 25 µs p95. See the
     compared with all-request T2, and returned candidates on the same 122
     inputs with two candidates. It found one fewer exact cycleable alternative
     (9 rather than 10) while reducing T2 calls by 63%. The app uses this trigger.
-  - Next: reduce T2 latency toward 150 ms and keep measuring quality on fresh
-    local holdouts before another training run.
+  - On a separate 64-input replay, streaming measured a 574 ms warm median to
+    the first usable candidate (21 samples) and 776 ms to the full set (24
+    samples); the sample sets differ. Combined candidates contained 6/64 exact
+    completions.
+  - Next: reduce first-candidate latency toward 150 ms and measure quality on
+    fresh local holdouts before another training run.
 - **P3 — future work.** Consider opt-in cloud prediction, a natural-language
   command bar, error recovery, packaging, signing, and automatic updates.
 
@@ -53,9 +57,10 @@ The latest T0/T1 replay measured 9 µs median and 25 µs p95. See the
 - Default mode: no network requests.
 - Rendering: within 10% of stock Alacritty.
 
-On the 2026-10-04 replay, the T0/T1 stage took 9 µs median and 25 µs p95. With
-the selected fast-miss trigger and two T2 candidates, warm model latency was
-793 ms median and 1,193 ms p95. There is no project CI or release pipeline yet.
+On the 2026-10-04 replay, the T0/T1 stage took 9 µs median and 25 µs p95. A
+2026-10-05 replay measured 574 ms warm median to the first usable T2 candidate
+(21 samples) and 776 ms to the full two-candidate set (24 samples). There is
+no project CI or release pipeline yet.
 
 ## Privacy requirements
 

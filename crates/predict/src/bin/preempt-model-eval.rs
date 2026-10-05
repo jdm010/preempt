@@ -409,6 +409,7 @@ fn score_cascade(
     distinct_training_commands: usize,
 ) {
     let mut fast_latencies = Vec::with_capacity(examples.len());
+    let mut first_candidate_latencies = Vec::with_capacity(examples.len());
     let mut model_latencies = Vec::with_capacity(examples.len());
     let mut t0_requests = 0;
     let mut t1_requests = 0;
@@ -465,16 +466,38 @@ fn score_cascade(
         });
         let started = Instant::now();
         t2_calls += 1;
-        prefetcher.request_with_seed(
+        prefetcher.request_streaming_with_seed(
             example.prefix.clone(),
             replay_sample_seed(&example.prefix),
             handler,
         );
 
-        match receiver.recv_timeout(RESULT_TIMEOUT) {
-            Ok(result) => {
+        let mut first_candidate_latency = None;
+        let result = loop {
+            match receiver.recv_timeout(RESULT_TIMEOUT) {
+                Ok(result) => {
+                    if result
+                        .completions
+                        .as_ref()
+                        .is_ok_and(|completions| !completions.is_empty())
+                    {
+                        first_candidate_latency.get_or_insert_with(|| started.elapsed());
+                    }
+                    if result.is_final {
+                        break Some(result.completions);
+                    }
+                }
+                Err(_) => break None,
+            }
+        };
+        if let Some(latency) = first_candidate_latency {
+            first_candidate_latencies.push(latency);
+        }
+
+        match result {
+            Some(result) => {
                 model_latencies.push(started.elapsed());
-                match result.completions {
+                match result {
                     Ok(completions) => {
                         let usable: Vec<&String> = completions
                             .iter()
@@ -518,7 +541,7 @@ fn score_cascade(
                     }
                 }
             }
-            Err(_) => {
+            None => {
                 scoring_errors += 1;
                 combined_top1_exact += usize::from(fast_first_exact);
                 combined_any_exact += usize::from(fast_exact);
@@ -557,7 +580,8 @@ fn score_cascade(
     println!("Scoring errors: {scoring_errors}");
     println!("Combined requests with a candidate: {combined_coverage}/{count}");
     print_micro_latency_summary("T0/T1 synchronous", &fast_latencies);
-    print_latency_summary(&model_latencies, "First T2 request");
+    print_latency_summary(&first_candidate_latencies, "Time to first T2 candidate");
+    print_latency_summary(&model_latencies, "Full T2 candidate set");
 
     if scoring_errors > 0 {
         std::process::exit(1);

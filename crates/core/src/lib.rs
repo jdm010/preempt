@@ -239,13 +239,16 @@ impl PredictionOverlay {
         request_id: u64,
         input: &str,
         completions: Result<Vec<String>, String>,
+        is_final: bool,
     ) -> Result<bool, String> {
         if self.pending_t2_request != Some(request_id)
             || self.current_input.as_deref() != Some(input)
         {
             return Ok(false);
         }
-        self.pending_t2_request = None;
+        if is_final {
+            self.pending_t2_request = None;
+        }
 
         let had_candidates = !self.candidates.is_empty();
         let mut model_candidates = Vec::new();
@@ -359,7 +362,7 @@ impl PredictionOverlay {
             return;
         };
         self.pending_t2_request =
-            Some(prefetcher.request(input_line.to_owned(), Arc::clone(handler)));
+            Some(prefetcher.request_streaming(input_line.to_owned(), Arc::clone(handler)));
     }
 
     fn cancel_t2_request(&mut self) {

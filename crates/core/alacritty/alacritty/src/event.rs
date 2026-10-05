@@ -1962,12 +1962,13 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
                         self.ctx.display.damage_tracker.frame().mark_fully_damaged();
                         *self.ctx.dirty = true;
                     },
-                    TerminalEvent::PredictionResult(request_id, input, completion) => {
-                        match self.ctx.display.prediction_overlay.apply_t2_result(
-                            request_id,
-                            &input,
-                            completion,
-                        ) {
+                    TerminalEvent::PredictionResult(request_id, input, completion, is_final) => {
+                        match self
+                            .ctx
+                            .display
+                            .prediction_overlay
+                            .apply_t2_result(request_id, &input, completion, is_final)
+                        {
                             Ok(true) => {
                                 self.ctx.display.damage_tracker.frame().mark_fully_damaged();
                                 *self.ctx.dirty = true;

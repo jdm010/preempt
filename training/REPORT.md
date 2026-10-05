@@ -239,6 +239,41 @@ median and 1,165 ms p95 over 46 samples. The all-request two-candidate run had
 latency vary between processes, so treat them as single-machine samples; the
 paired request counts and exact-match totals are the stronger policy signals.
 
+### Streaming first-candidate latency
+
+On 2026-10-05, we replayed a fresh 64-input sample from a private dataset
+exported from 999 local history entries (395 redaction-safe unique commands;
+63 skipped). T0/T1 supplied candidates on 39/64 inputs, including 4 exact
+completions. T2 ran on the remaining 25 inputs and returned at least one
+candidate for 22. The combined cascade had candidates on 61/64 inputs and
+contained 6 exact completions. The temporary dataset was deleted after replay.
+
+The replay measured time from queueing T2 to its first nonempty candidate and
+to its complete two-candidate result:
+
+| Measurement | Cold first request | Warm median | Warm p95 | Warm samples |
+|---|---:|---:|---:|---:|
+| First usable T2 candidate | 4,728 ms | 574 ms | 1,062 ms | 21 |
+| Full T2 candidate set | 4,907 ms | 776 ms | 1,569 ms | 24 |
+
+```mermaid
+xychart-beta
+    title "Streaming T2 latency in the 64-input replay"
+    x-axis "Milestone: first candidate, then full set" [1, 2]
+    y-axis "Latency in milliseconds" 0 --> 1800
+    line [574, 776]
+    line [1062, 1569]
+```
+
+The first-candidate metric includes only requests that produced a usable
+candidate, so it has fewer warm samples than full-result latency; the medians
+are not a paired per-request comparison. The first candidate is now delivered
+to the overlay as soon as generation finishes, while the worker continues
+sampling the remaining candidate. Latency remains well above the 150 ms target.
+These figures are a small, single-machine sample and are sensitive to model
+startup and system load. In the chart, the first line is warm median and the
+second is warm p95.
+
 ## Adapter/runtime status
 
 The MLX adapter was not converted to GGUF and the app does not load it. The
@@ -279,5 +314,8 @@ and its shell syntax checked.
 - Invoke T2 only when T0/T1 has no candidate. This reduced calls by 63% and
   kept top-1 exact hits unchanged, at the cost of one exact cycleable alternate
   in this 128-example replay.
+- Stream the first generated candidate to the overlay. In the 64-input replay,
+  its warm median was 574 ms; full two-candidate latency was 776 ms. Continue
+  reducing first-candidate latency toward 150 ms.
 - Improve T2 runtime latency toward the 150 ms target before another
   personalization run. The current adapter still did not improve completions.

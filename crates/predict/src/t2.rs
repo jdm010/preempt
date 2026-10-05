@@ -27,6 +27,8 @@ pub struct T2Result {
     pub request_id: u64,
     pub input: String,
     pub completions: Result<Vec<String>, String>,
+    /// False for an incremental candidate update; true when this request ends.
+    pub is_final: bool,
 }
 
 type ResultHandler = Arc<dyn Fn(T2Result) + Send + Sync + 'static>;
@@ -34,6 +36,7 @@ type ResultHandler = Arc<dyn Fn(T2Result) + Send + Sync + 'static>;
 struct Request {
     id: u64,
     sample_seed: u32,
+    stream_candidates: bool,
     input: String,
     handler: ResultHandler,
 }
@@ -86,7 +89,13 @@ impl T2Prefetcher {
 
     /// Queue candidate generation for the latest input; the callback runs on the model worker.
     pub fn request(&self, input: String, handler: ResultHandler) -> u64 {
-        self.queue_request(input, None, handler)
+        self.queue_request(input, None, false, handler)
+    }
+
+    /// Queue candidate generation and deliver partial results as candidates finish.
+    /// The handler receives non-final updates followed by a final result.
+    pub fn request_streaming(&self, input: String, handler: ResultHandler) -> u64 {
+        self.queue_request(input, None, true, handler)
     }
 
     /// Queue candidate generation with a caller-provided sampling seed.
@@ -99,13 +108,24 @@ impl T2Prefetcher {
         sample_seed: u32,
         handler: ResultHandler,
     ) -> u64 {
-        self.queue_request(input, Some(sample_seed), handler)
+        self.queue_request(input, Some(sample_seed), false, handler)
+    }
+
+    /// Queue a streaming request with a caller-provided sampling seed.
+    pub fn request_streaming_with_seed(
+        &self,
+        input: String,
+        sample_seed: u32,
+        handler: ResultHandler,
+    ) -> u64 {
+        self.queue_request(input, Some(sample_seed), true, handler)
     }
 
     fn queue_request(
         &self,
         input: String,
         sample_seed: Option<u32>,
+        stream_candidates: bool,
         handler: ResultHandler,
     ) -> u64 {
         let mut state = self
@@ -118,6 +138,7 @@ impl T2Prefetcher {
         state.pending = Some(Request {
             id,
             sample_seed: sample_seed.unwrap_or(id as u32),
+            stream_candidates,
             input,
             handler,
         });
@@ -228,6 +249,17 @@ fn run_worker(model_path: PathBuf, shared: Arc<Shared>, candidate_limit: usize) 
                 &request.input,
                 request.sample_seed,
                 candidate_limit,
+                request.stream_candidates,
+                &|completions| {
+                    if !is_cancelled() {
+                        (request.handler)(T2Result {
+                            request_id: request.id,
+                            input: request.input.clone(),
+                            completions: Ok(completions.to_vec()),
+                            is_final: false,
+                        });
+                    }
+                },
                 &is_cancelled,
             ),
             (Err(error), _) => Err(error.clone()),
@@ -240,6 +272,7 @@ fn run_worker(model_path: PathBuf, shared: Arc<Shared>, candidate_limit: usize) 
                 request_id: request.id,
                 input: request.input,
                 completions,
+                is_final: true,
             });
         }
     }
@@ -287,6 +320,8 @@ fn complete(
     input: &str,
     sample_seed: u32,
     candidate_limit: usize,
+    stream_candidates: bool,
+    on_partial: &impl Fn(&[String]),
     is_cancelled: &impl Fn() -> bool,
 ) -> Result<Option<Vec<String>>, String> {
     let template = model
@@ -384,6 +419,10 @@ fn complete(
             if !completions.contains(&completion) {
                 completions.push(completion);
             }
+        }
+
+        if stream_candidates && candidate_index + 1 < candidate_limit {
+            on_partial(&completions);
         }
     }
 

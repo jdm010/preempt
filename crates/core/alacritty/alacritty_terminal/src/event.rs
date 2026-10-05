@@ -43,7 +43,7 @@ pub enum Event {
     PredictionInput(Option<String>, bool),
 
     /// Deliver the results of speculative local-model completions.
-    PredictionResult(u64, String, Result<Vec<String>, String>),
+    PredictionResult(u64, String, Result<Vec<String>, String>, bool),
 
     /// Request to write the text area size.
     TextAreaSizeRequest(Arc<dyn Fn(WindowSize) -> String + Sync + Send + 'static>),
@@ -75,7 +75,7 @@ impl Debug for Event {
             Event::PredictionInput(_, cursor_at_end) => {
                 write!(f, "PredictionInput(<redacted>, {cursor_at_end})")
             },
-            Event::PredictionResult(_, _, _) => write!(f, "PredictionResult(<redacted>)"),
+            Event::PredictionResult(..) => write!(f, "PredictionResult(<redacted>)"),
             Event::Title(title) => write!(f, "Title({title})"),
             Event::CursorBlinkingChange => write!(f, "CursorBlinkingChange"),
             Event::MouseCursorDirty => write!(f, "MouseCursorDirty"),

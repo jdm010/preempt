@@ -91,6 +91,13 @@ was 779 ms median and 1,165 ms p95 over the 47 selective requests. The app now
 uses this fast-miss trigger and keeps the two-candidate budget. See the report
 for both candidate budgets, latency samples, and graphs.
 
+On 2026-10-05, a separate 64-input replay measured streaming latency with the
+same two-candidate budget. The first usable candidate arrived at a 574 ms warm
+median and 1,062 ms p95 (21 warm samples); the full set arrived at a 776 ms
+warm median and 1,569 ms p95 (24 warm samples). The first-candidate metric only
+includes requests that returned a candidate, so its sample set differs from
+the full-set latency metric. The target remains 150 ms.
+
 Preempt loads the GGUF model; it does not load the MLX adapter. The MLX guide
 lists GGUF export for Llama, Mistral, and Mixtral, but not Qwen3.5
 ([MLX-LM LoRA guide](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/LORA.md)).

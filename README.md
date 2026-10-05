@@ -16,8 +16,10 @@ Alacritty source tree, and a history-based prediction CLI.
   not included, and T2 runs only when T0/T1 has no candidate. In a paired
   128-input replay, this reduced T2 requests from 128 to 47 and kept top-1
   exact hits at 9/128, with one fewer exact cycleable alternative. Warm latency
-  was 779 ms median, above the 150 ms target. See [MODEL.md](MODEL.md) and the
-  [evaluation report](training/REPORT.md).
+  was 779 ms median, above the 150 ms target. T2 now streams its first usable
+  candidate to the overlay; a separate 64-input replay measured a 574 ms warm
+  median to that candidate and 776 ms to the full two-candidate set. See
+  [MODEL.md](MODEL.md) and the [evaluation report](training/REPORT.md).
 - **Safety hints:** heuristic risk labels for common destructive commands.
   These hints do not parse or block commands.
 - **Local history storage:** SQLCipher-backed history and feedback storage,
