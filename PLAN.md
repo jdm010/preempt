@@ -44,8 +44,11 @@ The latest T0/T1 replay measured 9 µs median and 25 µs p95. See the
     the first usable candidate (21 samples) and 776 ms to the full set (24
     samples); the sample sets differ. Combined candidates contained 6/64 exact
     completions.
-  - Next: reduce first-candidate latency toward 150 ms and measure quality on
-    fresh local holdouts before another training run.
+  - A local phase profile found about 186 ms median prompt evaluation for a
+    92–95-token prompt on four CPU threads. A small thread-count comparison
+    favored the existing four-thread default.
+  - Next: reduce prompt-evaluation cost and measure quality on fresh local
+    holdouts before another training run.
 - **P3 — future work.** Consider opt-in cloud prediction, a natural-language
   command bar, error recovery, packaging, signing, and automatic updates.
 

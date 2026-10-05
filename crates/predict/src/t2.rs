@@ -227,14 +227,24 @@ fn run_worker(model_path: PathBuf, shared: Arc<Shared>, candidate_limit: usize) 
         .map_err(|error| error.clone())
         .and_then(|model| {
             let backend = backend.as_ref().map_err(|error| error.clone())?;
-            let threads = thread::available_parallelism().map_or(2, |threads| {
+            let default_threads = thread::available_parallelism().map_or(2, |threads| {
                 i32::try_from(threads.get().min(4)).unwrap_or(2)
             });
+            let threads = std::env::var("PREEMPT_T2_THREADS")
+                .ok()
+                .and_then(|threads| threads.parse::<i32>().ok())
+                .filter(|threads| *threads > 0)
+                .unwrap_or(default_threads);
+            let batch_threads = std::env::var("PREEMPT_T2_BATCH_THREADS")
+                .ok()
+                .and_then(|threads| threads.parse::<i32>().ok())
+                .filter(|threads| *threads > 0)
+                .unwrap_or(threads);
             let params = LlamaContextParams::default()
                 .with_n_ctx(std::num::NonZeroU32::new(CONTEXT_TOKENS))
                 .with_n_batch(CONTEXT_TOKENS)
                 .with_n_threads(threads)
-                .with_n_threads_batch(threads);
+                .with_n_threads_batch(batch_threads);
             model
                 .new_context(backend, params)
                 .map_err(|error| error.to_string())
@@ -324,6 +334,8 @@ fn complete(
     on_partial: &impl Fn(&[String]),
     is_cancelled: &impl Fn() -> bool,
 ) -> Result<Option<Vec<String>>, String> {
+    let profile = std::env::var_os("PREEMPT_T2_PROFILE").is_some();
+    let prompt_started = Instant::now();
     let template = model
         .chat_template(None)
         .map_err(|error| format!("model chat template unavailable: {error}"))?;
@@ -360,6 +372,8 @@ fn complete(
     if tokens.len() > MAX_PROMPT_TOKENS {
         return Ok(None);
     }
+    let prompt_tokens = tokens.len();
+    let prompt_preparation = prompt_started.elapsed();
 
     let mut completions = Vec::with_capacity(candidate_limit);
     for candidate_index in 0..candidate_limit {
@@ -367,6 +381,7 @@ fn complete(
             return Ok(None);
         }
 
+        let candidate_started = Instant::now();
         context.clear_kv_cache();
         let mut batch = LlamaBatch::new(tokens.len().max(1), 1);
         batch
@@ -375,6 +390,7 @@ fn complete(
         context
             .decode(&mut batch)
             .map_err(|error| error.to_string())?;
+        let prompt_evaluation = candidate_started.elapsed();
 
         let mut sampler = if candidate_index == 0 {
             LlamaSampler::greedy()
@@ -389,11 +405,14 @@ fn complete(
         let mut decoder = encoding_rs::UTF_8.new_decoder();
         let mut output = String::new();
         let mut position = i32::try_from(tokens.len()).map_err(|error| error.to_string())?;
+        let mut sampled_tokens = 0;
+        let generation_started = Instant::now();
         for _ in 0..MAX_OUTPUT_TOKENS {
             if is_cancelled() {
                 return Ok(None);
             }
             let token = sampler.sample(context, -1);
+            sampled_tokens += 1;
             if model.is_eog_token(token) {
                 break;
             }
@@ -413,6 +432,19 @@ fn complete(
                 .decode(&mut batch)
                 .map_err(|error| error.to_string())?;
             position += 1;
+        }
+        let generation = generation_started.elapsed();
+
+        if profile {
+            eprintln!(
+                "T2 profile: candidate={} prompt_tokens={} prompt_prepare={}us prompt_eval={}us generation={}us sampled_tokens={}",
+                candidate_index + 1,
+                prompt_tokens,
+                prompt_preparation.as_micros(),
+                prompt_evaluation.as_micros(),
+                generation.as_micros(),
+                sampled_tokens,
+            );
         }
 
         if let Some(completion) = normalize_completion(input, &output) {

@@ -23,3 +23,19 @@ predictors without T2.
 On macOS 14, builds use the CPU backend because llama.cpp's Metal backend needs
 an API from macOS 15. On macOS 15 or newer, set `GGML_METAL=ON` to build with
 Metal support.
+
+## Runtime profiling and CPU tuning
+
+Set `PREEMPT_T2_PROFILE=1` when launching Preempt or the model evaluator to
+write per-candidate prompt preparation, prompt evaluation, and generation
+times to stderr. The profile contains token counts and durations, not command
+text. These phase times exclude the worker's 220 ms debounce and model startup;
+the evaluator's end-to-end latency includes the debounce.
+
+`PREEMPT_T2_THREADS` overrides llama.cpp's generation thread count, which
+defaults to at most four available threads. `PREEMPT_T2_BATCH_THREADS`
+overrides the thread count used for prompt evaluation and defaults to the
+generation count. On the development M3 Mac, a small six-prefix, one-candidate
+replay found four threads fastest at a 476 ms warm median; two threads measured
+585 ms, one measured 865 ms, and eight measured 501 ms. Treat this as an
+exploratory local comparison, not a cross-machine recommendation.

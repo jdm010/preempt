@@ -274,6 +274,30 @@ These figures are a small, single-machine sample and are sensitive to model
 startup and system load. In the chart, the first line is warm median and the
 second is warm p95.
 
+### CPU thread and phase profile
+
+A follow-up diagnostic replay used six generic shell prefixes, one candidate
+per request, and five warm requests after the cold first request. On the M3
+Mac, four threads had the lowest warm median among the tested settings:
+
+| Generation threads | Batch threads | Warm median | Warm p95 | Warm samples |
+|---:|---:|---:|---:|---:|
+| 1 | 1 | 865 ms | 1,000 ms | 5 |
+| 2 | 2 | 585 ms | 685 ms | 5 |
+| 4 | 4 | 476 ms | 565 ms | 5 |
+| 8 | 8 | 501 ms | 560 ms | 5 |
+| 4 | 8 | 510 ms | 674 ms | 5 |
+
+The thread-count runs were sequential, and each prefix can produce a different
+number of output tokens; this small sample is directional only. We kept the
+four-thread default. With four threads, the warm profile used 92–95 prompt
+tokens and measured 186 ms median prompt evaluation (170–188 ms across five
+samples). Prompt construction was about 1 ms. Suffix generation took 56 ms at
+the median and ranged from 46 to 147 ms, depending on output length. The
+220 ms debounce is outside these phase measurements and remains part of the
+end-to-end latency. The next optimization should reduce prompt-evaluation work
+while preserving holdout completion quality.
+
 ## Adapter/runtime status
 
 The MLX adapter was not converted to GGUF and the app does not load it. The
