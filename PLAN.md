@@ -10,7 +10,7 @@ suggestions. The prediction code has no cloud service.
 |---|---|
 | T0 history matching | Implemented. Ranks command prefixes by frequency and recency. |
 | T1 n-gram fallback | Implemented. Runs when T0 has no match. |
-| T2 local model | Experimental. The app requests T2 only on T0/T1 misses, streams its first candidate, caches the shared prompt prefix, and uses a 100 ms debounce. A 128-input replay measured 194 ms warm median to the first candidate and 347 ms to the complete two-candidate set; the target is 150 ms. |
+| T2 local model | Experimental. The app requests T2 only on T0/T1 misses, streams its first candidate, caches the shared prompt prefix, and adapts its debounce between 100 ms and 50 ms. A follow-up 128-input replay measured 151 ms warm median to the first candidate and 287 ms to the complete two-candidate set; the 150 ms target remains just out of reach. |
 | Risk hints | Implemented as UI labels. They do not block commands. |
 | History and feedback | Stored locally in a SQLCipher database. The key is kept in the operating system's credential store. |
 | Terminal overlay | Displays ghost text and accepts or cycles suggestions. A zsh hook supplies the current input line. |
@@ -60,8 +60,15 @@ The latest T0/T1 replay measured 9 µs median and 25 µs p95. See the
     the full set, with unchanged exact hits and coverage.
   - A synthetic typing simulation supports the 100 ms debounce: it coalesces
     80 ms keystrokes without wasted prompt evaluation, while 50 ms starts
-    canceled work. Next, reduce inference time toward 150 ms while preserving
-    holdout quality.
+    canceled work. The worker now keeps 100 ms for request intervals under
+    100 ms and uses 50 ms after a longer pause.
+  - A follow-up CPU replay compared Q4_0, Q3_K_S, and Q4_K_S. Q4_0 remained
+    fastest at 216 ms warm median to the first candidate; both alternatives
+    were slower, and Q3_K_S also lost exact completions. An incremental typed
+    prefix cache added state-copy cost without consistent latency gains and
+    was discarded. The adaptive debounce replay kept exact-match and coverage
+    results unchanged and measured 151 ms warm median to the first candidate.
+    Continue reducing inference time while preserving holdout quality.
 - **P3 — future work.** Consider opt-in cloud prediction, a natural-language
   command bar, error recovery, packaging, signing, and automatic updates.
 
@@ -73,10 +80,11 @@ The latest T0/T1 replay measured 9 µs median and 25 µs p95. See the
 - Default mode: no network requests.
 - Rendering: within 10% of stock Alacritty.
 
-On the 2026-10-04 replay, the T0/T1 stage took 9 µs median and 25 µs p95. In
-the 2026-10-05 replay with prompt-prefix caching and a 100 ms debounce, warm
-T2 latency was 194 ms median to the first candidate and 347 ms to the full
-two-candidate set. There is no project CI or release pipeline yet.
+On the 2026-10-04 replay, the T0/T1 stage took 9 µs median and 25 µs p95. A
+2026-10-05 replay with prompt-prefix caching and a fixed 100 ms debounce
+measured 194 ms median to the first T2 candidate and 347 ms to the full set. A
+follow-up replay with the adaptive debounce measured 151 and 287 ms,
+respectively. There is no project CI or release pipeline yet.
 
 ## Privacy requirements
 

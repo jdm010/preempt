@@ -16,10 +16,11 @@ Alacritty source tree, and a history-based prediction CLI.
   not included, and T2 runs only when T0/T1 has no candidate. In a paired
   128-input replay, the fast-miss policy made 47 T2 requests, kept 9/128
   top-1 exact hits and 9/128 exact cycleable candidates, and combined
-  availability was 125/128.
-  With prompt-prefix caching and a 100 ms debounce, warm latency was 194 ms
-  median to the first candidate and 347 ms to the full two-candidate set,
-  still above the 150 ms target. See [MODEL.md](MODEL.md) and the
+  availability was 125/128. T2 uses a 100 ms debounce for request intervals
+  under 100 ms and 50 ms after a longer pause. A follow-up replay measured
+  151 ms warm median to the first candidate and 287 ms to the complete
+  two-candidate set, with the same exact-match and coverage results. The
+  first-candidate median is near the 150 ms target; see [MODEL.md](MODEL.md) and the
   [evaluation report](training/REPORT.md).
 - **Safety hints:** heuristic risk labels for common destructive commands.
   These hints do not parse or block commands.

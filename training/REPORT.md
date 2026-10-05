@@ -439,10 +439,70 @@ At 80 ms per key, the 50 ms debounce spent about 495 ms across 12 prompt
 evaluations that were cancelled after the input changed; the 100 ms debounce
 coalesced those updates without starting inference. At 180 ms per key, the
 shorter setting returned more intermediate-prefix results (21 versus 8) and
-reached the final candidate sooner. We keep 100 ms as the default to limit
-speculative work during typing. This single-command simulation is directional;
-first-candidate latency on the holdout remains 194 ms median, above the 150 ms
-target, so further work should reduce model inference time.
+reached the final candidate sooner. The worker keeps the 100 ms debounce for
+request intervals under 100 ms and uses a shorter delay after a pause. This
+single-command simulation is directional; the holdout comparison is below.
+
+### Follow-up runtime and quantization experiments
+
+An incremental command-prefix KV cache was prototyped after the shared 40-token
+cache. It saved the state after the typed command tokens so later prefixes
+could reuse it. On the synthetic typing simulation, its final-candidate
+latencies were 279, 342, 279, and 262 ms at 50, 80, 120, and 180 ms key
+intervals. A matched run without the prototype measured 231, 228, 275, and
+229 ms. The result did not improve consistently. Creating the extra llama
+state took about 20–35 ms and used 20,743,820 bytes per worker, in addition to
+the shared-prefix snapshot. The prototype was discarded.
+
+We then compared quantizations on the same redaction-safe 128-example replay,
+with stable per-example sampling and the existing fast-miss trigger. The Q4_0
+file is the installed model; Q3_K_S and Q4_K_S were downloaded temporarily
+from the [mradermacher Qwen3.5 GGUF repository at revision
+`9d48fdbc0d8f133716da87ec1d904e5d2c7175a6`](https://huggingface.co/mradermacher/Qwen3.5-0.8B-GGUF/tree/9d48fdbc0d8f133716da87ec1d904e5d2c7175a6)
+and verified against their published file hashes. Model files and private
+evaluation data are not included in the repository.
+
+SHA-256: Q3_K_S `3bb83a98f94dc03fd6a5e1705a5f07799a37f2de7539114ce8aad01bb79db5ee`;
+Q4_K_S `3f5785f3ba10eca840f9e9c56364d42c6c05e9963f9442362c2f5a772f65f8f6`.
+
+| Quantization | File size | T2 requests with candidates | Combined availability | Combined top-1 exact / exact in candidates | First-candidate warm median / p95 | Full-set warm median / p95 |
+|---|---:|---:|---:|---:|---:|---:|
+| Q4_0 | 563 MB | 44/47 | 125/128 | 9/128 / 9/128 | 216 / 402 ms (43) | 368 / 679 ms (46) |
+| Q3_K_S | 435 MB | 44/47 | 125/128 | 7/128 / 7/128 | 381 / 942 ms (43) | 707 / 1,498 ms (46) |
+| Q4_K_S | 503 MB | 43/47 | 124/128 | 10/128 / 11/128 | 278 / 581 ms (42) | 447 / 873 ms (46) |
+
+```mermaid
+xychart-beta
+    title "Warm T2 latency by quantization"
+    x-axis "Q4_0 first, full, Q3_K_S first, full, Q4_K_S first, full" [1, 2, 3, 4, 5, 6]
+    y-axis "Latency in milliseconds" 0 --> 1600
+    line [216, 368, 381, 707, 278, 447]
+    line [402, 679, 942, 1498, 581, 873]
+```
+
+The first line is the warm median and the second is p95. Each quantization was
+evaluated in one local run, so the timings are directional. Q4_K_S had slightly
+more exact suggestions but a 62 ms slower first-candidate median than Q4_0.
+Q3_K_S had no exact T2 completion and was slowest in both prompt evaluation
+and generation. We kept Q4_0 as the local default. Its 216 ms median remains
+above the 150 ms goal, so the latency work is still open.
+
+### Cadence-adaptive debounce replay
+
+The worker now selects 100 ms when the last request arrived less than 100 ms
+after its predecessor, and 50 ms when the interval was at least 100 ms. The
+debounce deadline is measured from when the request was queued, so time spent
+waiting for stale inference is included. This keeps the coalescing behavior
+for fast typing and responds earlier after a pause.
+
+On the same 128-example Q4_0 replay and fast-miss policy, the adaptive run kept
+T2 candidate availability at 44/47, combined availability at 125/128, and
+combined top-1 and exact-in-candidates at 9/128. Warm first-candidate latency
+was 151 ms median and 357 ms p95 (43 samples), down from 216 / 402 ms in the
+matched fixed-100 ms run. The complete two-candidate set measured 287 / 547 ms
+(46 samples), down from 368 / 679 ms. This was one local run; the median is
+near, but still slightly above, the 150 ms target. More profiling is needed
+before claiming a stable target-level latency.
 
 ## Adapter/runtime status
 

@@ -16,7 +16,8 @@ use llama_cpp_2::{LlamaStateSeqFlags, SeqState};
 
 use crate::{t2_user_prompt, T2_SYSTEM_PROMPT};
 
-const DEBOUNCE: Duration = Duration::from_millis(100);
+const DEFAULT_DEBOUNCE: Duration = Duration::from_millis(100);
+const RESPONSIVE_DEBOUNCE: Duration = Duration::from_millis(50);
 const CONTEXT_TOKENS: u32 = 768;
 const MAX_PROMPT_TOKENS: usize = 640;
 const MAX_OUTPUT_TOKENS: usize = 48;
@@ -39,6 +40,8 @@ struct Request {
     id: u64,
     sample_seed: u32,
     stream_candidates: bool,
+    queued_at: Instant,
+    debounce: Duration,
     input: String,
     handler: ResultHandler,
 }
@@ -51,6 +54,7 @@ struct PromptCache {
 #[derive(Default)]
 struct State {
     request_id: u64,
+    last_queued_at: Option<Instant>,
     pending: Option<Request>,
     stopping: bool,
 }
@@ -142,10 +146,19 @@ impl T2Prefetcher {
             .unwrap_or_else(|poison| poison.into_inner());
         state.request_id = state.request_id.wrapping_add(1).max(1);
         let id = state.request_id;
+        let queued_at = Instant::now();
+        // Coalesce fast keystrokes, but respond sooner after a pause.
+        let debounce = state
+            .last_queued_at
+            .replace(queued_at)
+            .filter(|previous| queued_at.saturating_duration_since(*previous) >= DEFAULT_DEBOUNCE)
+            .map_or(DEFAULT_DEBOUNCE, |_| RESPONSIVE_DEBOUNCE);
         state.pending = Some(Request {
             id,
             sample_seed: sample_seed.unwrap_or(id as u32),
             stream_candidates,
+            queued_at,
+            debounce,
             input,
             handler,
         });
@@ -278,6 +291,12 @@ fn run_worker(model_path: PathBuf, shared: Arc<Shared>, candidate_limit: usize) 
     };
 
     while let Some(request) = next_request(&shared) {
+        if std::env::var_os("PREEMPT_T2_PROFILE").is_some() {
+            eprintln!(
+                "T2 profile: request_debounce={}ms",
+                request.debounce.as_millis(),
+            );
+        }
         let is_cancelled = || is_stale(&shared, request.id);
         let completion = match (&model, &mut context) {
             (Ok(model), Ok(context)) => complete(
@@ -323,10 +342,18 @@ fn next_request(shared: &Shared) -> Option<Request> {
             return None;
         }
         if let Some(mut request) = state.pending.take() {
-            let mut deadline = Instant::now() + DEBOUNCE;
+            let mut deadline = request.queued_at + request.debounce;
             loop {
                 if state.stopping {
                     return None;
+                }
+                if state.request_id != request.id {
+                    if let Some(newer) = state.pending.take() {
+                        request = newer;
+                        deadline = request.queued_at + request.debounce;
+                    } else {
+                        break;
+                    }
                 }
                 let remaining = deadline.saturating_duration_since(Instant::now());
                 if remaining.is_zero() {
@@ -336,7 +363,7 @@ fn next_request(shared: &Shared) -> Option<Request> {
                 state = next_state;
                 if let Some(newer) = state.pending.take() {
                     request = newer;
-                    deadline = Instant::now() + DEBOUNCE;
+                    deadline = request.queued_at + request.debounce;
                 } else if timeout.timed_out() {
                     return Some(request);
                 }
